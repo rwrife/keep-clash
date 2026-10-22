@@ -1,0 +1,23 @@
+# Godot generated editor state
+.godot/
+.import/
+*.translation
+# Builds and export outputs
+build/
+dist/
+exports/
+*.pck
+*.exe
+*.apk
+*.aab
+*.ipa
+# Secrets and local overrides
+.env
+*.keystore
+*.mobileprovision
+*.p12
+*.p8
+# OS/IDE
+.DS_Store
+.vscode/
+.idea/

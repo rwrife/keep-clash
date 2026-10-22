@@ -1,0 +1,11 @@
+Keep Clash is an offline 3D castle-shield ball battle. Steer a glowing shield around your keep, deflect a roaring energy orb, and smash the ramparts of three rival keeps before they do the same to you. Play quick solo rounds against configurable bot opponents or set up local couch matches with paired controllers and keyboard seats.
+
+Every deflection sparks particles, screen-shake and impact sound. Earn stars for clean saves and survival, then spend them to unlock three arena variants and cosmetic shield and keep skins. Matches are short, readable at any window size, and end with a rematch button.
+
+- No accounts, no ads, no subscriptions, no online matchmaking, no telemetry.
+- Your stars, records, settings and unlocks stay on your device in versioned local files you can export or import whenever you like.
+- Windows: mouse, keyboard and gamepad with full key remapping, hover states and keyboard navigation. Android and iOS: one-thumb touch controls, safe-area aware HUD, system back to pause.
+- Accessibility: reduced motion, high contrast, HUD scaling and remappable controls.
+- Built with the open-source Godot 4 engine; Windows desktop is the primary build, with Android and iOS (phones and tablets) as committed compile targets.
+
+Progression, arenas, cosmetics and settings are part of the plan described in the repository roadmap; features appear only once they are actually implemented and shipped in a build.

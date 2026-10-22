@@ -1,0 +1,21 @@
+{
+  "platform": "godot4-windows-android-ios",
+  "engine": "Godot",
+  "engine_version": "4.7.2-stable",
+  "engine_source": "https://godotengine.org/download/archive/4.7.2-stable/",
+  "language": "GDScript",
+  "renderers": {
+    "windows": "Forward+ (PBR, glow/bloom, LightmapGI or SDFGI, GPUParticles3D)",
+    "android_ios": "Mobile renderer with scaled effects",
+    "web_linux_macos": "planned, unverified"
+  },
+  "bundle_identifier": "com.infinityball.keepclash",
+  "android_unique_name": "com.infinityball.keepclash",
+  "ios_bundle_identifier": "com.infinityball.keepclash",
+  "asc_registration": "CREATED com.infinityball.keepclash",
+  "asc_secret_names": ["ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_P8", "ASC_TEAM_ID"],
+  "primary_ci_target": "windows-latest",
+  "test_framework": "GUT or gdUnit4 (pinned in issue #1)",
+  "planned": true,
+  "note": "Planning contract only; no project files, exports, or CI measurements exist yet. project.godot and export_presets.cfg land in issue #1."
+}
