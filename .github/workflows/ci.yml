@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: 4.7.2-stable
+  GODOT_BASE_URL: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable
+
+jobs:
+  verify:
+    name: Import + GUT (Linux headless)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Check pin matches docs/toolchain.json
+        run: |
+          pin=$(python3 -c "import json;print(json.load(open('docs/toolchain.json'))['engine_version'])")
+          test "$pin" = "$GODOT_VERSION" || { echo "toolchain.json pin $pin != $GODOT_VERSION"; exit 1; }
+      - name: Download pinned headless editor
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/godot.zip" "$GODOT_BASE_URL/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          curl -fsSL -o "$RUNNER_TEMP/SHA512-SUMS.txt" "$GODOT_BASE_URL/SHA512-SUMS.txt"
+          (cd "$RUNNER_TEMP" && grep -F " Godot_v${GODOT_VERSION}_linux.x86_64.zip" SHA512-SUMS.txt | sed "s|Godot_v${GODOT_VERSION}_linux.x86_64.zip|godot.zip|" | sha512sum -c -)
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/Godot_v${GODOT_VERSION}_linux.x86_64" "$RUNNER_TEMP/godot"
+          chmod +x "$RUNNER_TEMP/godot"
+          "$RUNNER_TEMP/godot" --headless --version
+      - name: Import project
+        run: '"$RUNNER_TEMP/godot" --headless --path . --import --quit'
+      - name: Run GUT
+        run: '"$RUNNER_TEMP/godot" --headless --path . -s res://addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit'
+
+  windows-load:
+    name: Windows headless project load + tests
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Download pinned editor
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/godot.zip" "$GODOT_BASE_URL/Godot_v${GODOT_VERSION}_win64.exe.zip"
+          curl -fsSL -o "$RUNNER_TEMP/SHA512-SUMS.txt" "$GODOT_BASE_URL/SHA512-SUMS.txt"
+          (cd "$RUNNER_TEMP" && grep -F " Godot_v${GODOT_VERSION}_win64.exe.zip" SHA512-SUMS.txt | sed "s|Godot_v${GODOT_VERSION}_win64.exe.zip|godot.zip|" | sha512sum -c -)
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+          exe=$(ls "$RUNNER_TEMP"/godot/Godot_v*_win64_console.exe)
+          echo "GODOT_EXE=$exe" >> "$GITHUB_ENV"
+          "$exe" --headless --version
+      - name: Import project
+        run: '"$GODOT_EXE" --headless --path . --import --quit'
+      - name: Run GUT
+        run: '"$GODOT_EXE" --headless --path . -s res://addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit'

@@ -2,7 +2,7 @@
 
 Offline 3D castle-shield ball battle: deflect fireballs, smash rival keeps, and win couch or solo rounds on Windows, tablets, and phones.
 
-**Status:** planning scaffold only. No playable scene, tests, export, or validated platform build yet. See [PLAN.md](PLAN.md) and [issues](https://github.com/rwrife/keep-clash/issues).
+**Status:** Godot 4.7.2-stable skeleton: project loads headless, GUT 9.6.1 harness and Linux + Windows CI lanes exist. No playable scene yet — round gameplay lands in issue #3. See [PLAN.md](PLAN.md) and [issues](https://github.com/rwrife/keep-clash/issues).
 
 ## Why / for whom
 
@@ -22,6 +22,6 @@ Local versioned JSON under Godot user data for settings, stars, and records. No 
 
 Godot 4.7.2-stable, GDScript, Windows Desktop primary build; Android and iOS phones/tablets committed builds later. Linux/macOS/Web exports planned, not verified. `com.infinityball.keepclash` is Android `application/unique_name`, iOS bundle ID, and prospective MSIX identity. App Store Connect: `CREATED com.infinityball.keepclash`; repository ASC secret names: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `ASC_TEAM_ID` (values never stored here).
 
-Install pinned editor and matching export templates, then open `project.godot` and run `godot --headless --path . --import --quit`. This command has **not** run for this scaffold; issue #1 adds load and GUT CI gates. `project.godot` and `export_presets.cfg` are planning configuration, not evidence of working exports. Windows `v*` GitHub release workflow is issue #8; mobile store submissions come later.
+Install pinned Godot 4.7.2-stable editor and matching export templates, then run `godot --headless --path . --import --quit` and `godot --headless --path . -s res://addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit`. Local Linux arm64 import + GUT pass in issue #1; CI covers Linux x86_64 and Windows editor import/tests. `export_presets.cfg` configures unsigned Windows/Android/iOS outputs, but does **not** prove Android/iOS export builds. Windows `v*` GitHub release workflow is issue #8; mobile store submissions come later.
 
 `AppStore/description.txt` is draft listing copy. `AppStore/icon.png` is real generated OpenAI Images art (`gpt-image-2.5-flare` via spark-media); platform icon wiring remains issue #8. Assets and license status: [assets/README.md](assets/README.md). Graphics target: Forward+ PBR, GI, glow and particles on Windows; mobile renderer and scaled effects on phones/tablets. Image-to-mesh pipeline and manual asset fallback remain issue #4. None of these graphical targets are implemented yet.
