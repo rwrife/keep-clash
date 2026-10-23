@@ -23,7 +23,7 @@ Modern 3D arena with Forward+ renderer on Windows: PBR `StandardMaterial3D`, bak
 
 ## Verification
 
-Pinned editor `--headless --import --quit`; GUT rules and save tests on Linux headless runner; Windows editor project-load, tests and export on `windows-latest`. Android export build in CI when feasible; iOS export on macOS runner later. Manual real-device touch, tablet safe-area and controller tests needed; never mark planned exports tested. Compare renderer effects and frame budgets on devices, fallback to mobile renderer where needed. No canonical game suite exists in current scaffold.
+Issue #1 local verification (2026-10-23, Linux arm64 pinned Godot 4.7.2-stable): `--headless --import --quit` exited 0; GUT 9.6.1 ran 5 tests/22 assertions, all passed. CI checks project load + GUT on Linux x86_64 and `windows-latest`, using editor binaries downloaded with SHA512 verification. Linux and Windows CI results must be checked on the PR head; neither platform has a gameplay journey yet. Windows export build is reserved for issue #8. Android/iOS have unsigned, credential-free export presets but **no export build was run**; Android export build in CI when feasible, iOS export on macOS later. Linux/macOS/Web exports are planned, not tested; Compatibility renderer for Web is unmeasured. Manual real-device touch, tablet safe-area and controller tests needed; never mark planned exports tested. Compare renderer effects and frame budgets on devices, fallback to mobile renderer where needed.
 
 ## Distribution
 

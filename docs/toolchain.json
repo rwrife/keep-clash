@@ -15,7 +15,17 @@
   "asc_registration": "CREATED com.infinityball.keepclash",
   "asc_secret_names": ["ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_P8", "ASC_TEAM_ID"],
   "primary_ci_target": "windows-latest",
-  "test_framework": "GUT or gdUnit4 (pinned in issue #1)",
-  "planned": true,
-  "note": "Planning contract only; no project files, exports, or CI measurements exist yet. project.godot and export_presets.cfg land in issue #1."
+  "test_framework": "GUT 9.6.1 (vendored under addons/gut, pinned by issue #1)",
+  "network": {
+    "consent_required": false,
+    "cloud_sync": false,
+    "telemetry": false,
+    "status": "zero-network offline-by-default"
+  },
+  "planned": false,
+  "ci_lanes": {
+    "linux_headless": "pinned 4.7.2-stable linux.x86_64 editor: --import --quit, then GUT on res://tests",
+    "windows_latest": "pinned 4.7.2-stable win64 editor: headless --import --quit, then GUT on res://tests; Windows Desktop export ships with issue #8"
+  },
+  "note": "Issue #1 landed: project.godot, export_presets.cfg (Windows/Android/iOS, no credentials), vendored GUT and both CI lanes exist. Android/iOS presets are committed configuration only; no Android/iOS binary has been produced in CI yet (planned)."
 }

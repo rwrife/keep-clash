@@ -1,7 +1,11 @@
 # Godot generated editor state
 .godot/
 .import/
+*.import
 *.translation
+.cache/
+.config/
+.local/
 # Builds and export outputs
 build/
 dist/
