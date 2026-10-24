@@ -21,6 +21,10 @@ Modern 3D arena with Forward+ renderer on Windows: PBR `StandardMaterial3D`, bak
 7. Versioned backup/export/import and privacy checks.
 8. Windows `v*` release Action, zip Windows Desktop build, store copy review and platform icon wiring.
 
+## Match rules (#2)
+
+`scripts/match_rules.gd` is a node-free `RefCounted` model. The scene calls `step(1.0 / 120.0)` once per fixed tick, aims shields with `set_shield_angle(seat, angle)` (angle measured from the keep's centre, same frame as `bot_target`), and calls `serve(angle)` after a parked (non-winning) core hit. `step()` returns ordered shield/wall/core/win events; each keep has three angular wall sectors with independent one-hit destruction; the last standing keep wins and the match latches `over`. Seeded bot decisions consume RNG only on explicit `bot_target(seat, difficulty)` calls. Stars: 1 for winning, +1 intact-ramparts, +1 for three or more deflections. Earliest contact per tick is solved with an analytic circle sweep (`sweep_circle`) rather than endpoint overlap, so fast balls cannot tunnel; `MAX_IMPACTS=32` bounds ricochet chains within one tick. This is deterministic gameplay-rule verification only — no renderer, physics-engine or frame-budget claim.
+
 ## Verification
 
 Issue #1 local verification (2026-10-23, Linux arm64 pinned Godot 4.7.2-stable): `--headless --import --quit` exited 0; GUT 9.6.1 ran 5 tests/22 assertions, all passed. CI checks project load + GUT on Linux x86_64 and `windows-latest`, using editor binaries downloaded with SHA512 verification. Linux and Windows CI results must be checked on the PR head; neither platform has a gameplay journey yet. Windows export build is reserved for issue #8. Android/iOS have unsigned, credential-free export presets but **no export build was run**; Android export build in CI when feasible, iOS export on macOS later. Linux/macOS/Web exports are planned, not tested; Compatibility renderer for Web is unmeasured. Manual real-device touch, tablet safe-area and controller tests needed; never mark planned exports tested. Compare renderer effects and frame budgets on devices, fallback to mobile renderer where needed.
