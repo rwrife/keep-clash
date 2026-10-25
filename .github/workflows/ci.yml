@@ -39,6 +39,11 @@ jobs:
         run: '"$RUNNER_TEMP/godot" --headless --path . --import --quit'
       - name: Run GUT
         run: '"$RUNNER_TEMP/godot" --headless --path . -s res://addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit'
+      - name: 10-round headless smoke
+        run: |
+          out=$("$RUNNER_TEMP/godot" --headless -s tools/smoke_ten_rounds.gd)
+          echo "$out"
+          echo "$out" | grep -q '^SUCCESS: 10 consecutive rounds completed cleanly$'
 
   windows-load:
     name: Windows headless project load + tests
@@ -64,3 +69,9 @@ jobs:
         run: '"$GODOT_EXE" --headless --path . --import --quit'
       - name: Run GUT
         run: '"$GODOT_EXE" --headless --path . -s res://addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit'
+      - name: 10-round headless smoke
+        shell: bash
+        run: |
+          out=$("$GODOT_EXE" --headless -s tools/smoke_ten_rounds.gd)
+          echo "$out"
+          echo "$out" | grep -q '^SUCCESS: 10 consecutive rounds completed cleanly$'

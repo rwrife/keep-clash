@@ -27,5 +27,5 @@
     "linux_headless": "pinned 4.7.2-stable linux.x86_64 editor: --import --quit, then GUT on res://tests",
     "windows_latest": "pinned 4.7.2-stable win64 editor: headless --import --quit, then GUT on res://tests; Windows Desktop export ships with issue #8"
   },
-  "note": "Issue #1 landed: project.godot, export_presets.cfg (Windows/Android/iOS, no credentials), vendored GUT and both CI lanes exist. Android/iOS presets are committed configuration only; no Android/iOS binary has been produced in CI yet (planned)."
+  "note": "Issue #1 landed: project.godot, export_presets.cfg (Windows/Android/iOS, no credentials), vendored GUT and both CI lanes exist. Android/iOS presets are committed configuration only; no Android/iOS export build has been produced in CI yet (planned). Issue #3 added the playable round scene, seat routing, InputMap actions and the 10-round headless smoke step on both CI lanes; no real-device gamepad/touch/back-button test has been run yet."
 }
