@@ -1,13 +1,18 @@
 extends Node3D
-## Round scene: greybox 3D arena (art pass is issue #4), four keeps/shields,
+## Round scene: PBR primitive arena with impact feedback, four keeps/shields,
 ## ball, adaptive HUD, pause/restart/rematch loop and per-device seat routing.
 ## The rules run in RoundController; this node only renders and feeds input.
 
 const MENU_SCENE := "res://scenes/menu.tscn"
-const SEAT_COLORS := [Color("e05c5c"), Color("e0b35c"), Color("5ce0a8"), Color("5c9be0")]
+const SEAT_COLORS := ArenaLook.SEAT_COLORS
 const WALL_HALF_ARC := PI / 3.0
 const JOY_DEADZONE := 0.25
 const TOUCH_SENSITIVITY := 0.012
+## The user-facing accessibility toggle lands in issue #5.
+const REDUCED_MOTION := false
+const IMPACT_POOL_SIZE := 8
+const SHAKE_SECONDS := 0.25
+const CAMERA_POSITION := Vector3(0, 25, 18)
 
 var controller: RoundController
 
@@ -24,6 +29,15 @@ var _overlay_lines: VBoxContainer
 var _pause_panel: Control
 var _quit_dialog: ConfirmationDialog
 var _quit_to_app := false
+var _camera: Camera3D
+var _impact_pool: Array[GPUParticles3D] = []
+var _next_impact := 0
+var _impact_audio: AudioStreamPlayer
+var _wall_tone: AudioStreamWAV
+var _core_tone: AudioStreamWAV
+var _shake_remaining := 0.0
+var _shake_strength := 0.0
+var _shake_phase := 0.0
 
 
 func _ready() -> void:
@@ -41,10 +55,15 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if not REDUCED_MOTION:
+		# Keep the mouse aim ray independent of the previous frame's visual shake.
+		_camera.position = CAMERA_POSITION
 	_read_human_input(delta)
 	controller.advance(delta)
 	_sync_visuals()
 	_update_hud()
+	if not REDUCED_MOTION:
+		_update_impact_juice(delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -97,12 +116,16 @@ func _set_paused(value: bool) -> void:
 
 func _restart() -> void:
 	controller.restart()
+	if not REDUCED_MOTION:
+		_reset_impact_juice()
 	_set_paused(false)
 	_refresh_overlay()
 
 
 func _rematch() -> void:
 	controller.rematch()
+	if not REDUCED_MOTION:
+		_reset_impact_juice()
 	_refresh_overlay()
 
 
@@ -160,15 +183,7 @@ func _seats_for_device(device: String) -> Array[int]:
 
 func _build_world() -> void:
 	var environment := WorldEnvironment.new()
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("08131d")
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("30465c")
-	env.ambient_light_energy = 0.7
-	env.glow_enabled = true
-	env.glow_intensity = 0.6
-	environment.environment = env
+	environment.environment = ArenaLook.build_environment()
 	add_child(environment)
 
 	var sun := DirectionalLight3D.new()
@@ -177,7 +192,7 @@ func _build_world() -> void:
 	sun.shadow_enabled = true
 	add_child(sun)
 
-	var floor_mat := _mat(Color("27313d"), 0.05, 0.85)
+	var floor_mat := ArenaLook.floor_material()
 	var floor_mesh := PlaneMesh.new()
 	floor_mesh.size = Vector2(38, 38)
 	var floor_node := MeshInstance3D.new()
@@ -191,7 +206,7 @@ func _build_world() -> void:
 		var keep := Node3D.new()
 		keep.position = origin3
 		add_child(keep)
-		var core_mat := _mat(SEAT_COLORS[seat], 0.15, 0.55)
+		var core_mat := ArenaLook.keep_material(seat)
 		var core := MeshInstance3D.new()
 		var core_mesh := CylinderMesh.new()
 		core_mesh.top_radius = MatchRules.CORE_RADIUS
@@ -209,7 +224,7 @@ func _build_world() -> void:
 			var wall := MeshInstance3D.new()
 			wall.mesh = ArcMesh.build(0.9, 1.25, 1.2, WALL_HALF_ARC * 0.92)
 			wall.rotation.y = -angle
-			wall.material_override = _mat(Color("8c98a6"), 0.1, 0.7)
+			wall.material_override = ArenaLook.wall_material()
 			keep.add_child(wall)
 			walls.append(wall)
 		_wall_nodes.append(walls)
@@ -217,7 +232,7 @@ func _build_world() -> void:
 		var shield_pivot := Node3D.new()
 		var shield := MeshInstance3D.new()
 		shield.mesh = ArcMesh.build(MatchRules.SHIELD_RADIUS - 0.16, MatchRules.SHIELD_RADIUS + 0.16, 0.7, MatchRules.SHIELD_HALF_ARC * 0.95)
-		shield.material_override = _mat(SEAT_COLORS[seat].lightened(0.25), 0.35, 0.35)
+		shield.material_override = ArenaLook.shield_material(seat)
 		shield_pivot.add_child(shield)
 		keep.add_child(shield_pivot)
 		_shield_nodes.append(shield_pivot)
@@ -227,21 +242,85 @@ func _build_world() -> void:
 	ball_mesh.radius = 0.35
 	ball_mesh.height = 0.7
 	_ball.mesh = ball_mesh
-	var ball_mat := StandardMaterial3D.new()
-	ball_mat.albedo_color = Color("ffd27c")
-	ball_mat.emission_enabled = true
-	ball_mat.emission = Color("ffb347")
-	ball_mat.emission_energy_multiplier = 2.5
-	ball_mat.roughness = 0.3
-	_ball.material_override = ball_mat
+	_ball.material_override = ArenaLook.ball_material()
 	add_child(_ball)
 
-	var camera := Camera3D.new()
-	add_child(camera)
-	camera.position = Vector3(0, 25, 18)
-	camera.fov = 52
-	camera.look_at(Vector3.ZERO, Vector3.UP)
-	camera.current = true
+	_camera = Camera3D.new()
+	add_child(_camera)
+	_camera.position = CAMERA_POSITION
+	_camera.fov = 52
+	_camera.look_at(Vector3.ZERO, Vector3.UP)
+	_camera.current = true
+	if not REDUCED_MOTION:
+		_build_impact_juice()
+
+
+func _build_impact_juice() -> void:
+	for index in range(IMPACT_POOL_SIZE):
+		var burst := ArenaLook.impact_particles()
+		burst.name = "ImpactBurst%d" % index
+		burst.amount = ArenaLook.IMPACT_PARTICLE_AMOUNT * 2
+		add_child(burst)
+		_impact_pool.append(burst)
+	_wall_tone = ArenaLook.impact_pcm("wall")
+	_core_tone = ArenaLook.impact_pcm("core")
+	_impact_audio = AudioStreamPlayer.new()
+	_impact_audio.volume_db = ArenaLook.impact_tone_db()
+	add_child(_impact_audio)
+
+
+func _play_impact(event: Dictionary) -> void:
+	var kind: String = event["kind"]
+	var seat: int = event["seat"]
+	var center: Vector2 = MatchRules.SEAT_POSITIONS[seat]
+	var impact_position := Vector3(center.x, 0.8, center.y)
+	var core_hit := kind == "core"
+	if not core_hit:
+		var sector: int = event["wall"]
+		# Match the visible arc midpoint used by _build_world().
+		var angle := -PI / 2.0 + sector * TAU / 3.0
+		impact_position += Vector3(cos(angle), 0, sin(angle)) * MatchRules.WALL_RADIUS
+		impact_position.y = 0.6
+	var burst: GPUParticles3D = _impact_pool[_next_impact]
+	_next_impact = (_next_impact + 1) % IMPACT_POOL_SIZE
+	burst.position = impact_position
+	burst.amount_ratio = 1.0 if core_hit else 0.5
+	var process: ParticleProcessMaterial = burst.process_material
+	process.initial_velocity_min = 3.5 if core_hit else 2.0
+	process.initial_velocity_max = 7.0 if core_hit else 5.0
+	burst.restart()
+	burst.emitting = true
+	_shake_remaining = SHAKE_SECONDS
+	_shake_strength = maxf(_shake_strength, 0.24 if core_hit else 0.09)
+	_impact_audio.stream = _core_tone if core_hit else _wall_tone
+	var difficulty: int = controller.seats[seat]["difficulty"]
+	_impact_audio.pitch_scale = 0.95 + 0.05 * difficulty if controller.seats[seat]["kind"] == "bot" else 1.0
+	_impact_audio.play()
+
+
+func _update_impact_juice(delta: float) -> void:
+	_shake_remaining = maxf(0.0, _shake_remaining - delta)
+	if _shake_remaining <= 0.0:
+		_camera.position = CAMERA_POSITION
+		_shake_strength = 0.0
+		_shake_phase = 0.0
+		return
+	_shake_phase += delta
+	var envelope := _shake_strength * pow(_shake_remaining / SHAKE_SECONDS, 2.0)
+	var offset := _camera.basis.x * sin(_shake_phase * 83.0) + _camera.basis.y * cos(_shake_phase * 107.0) * 0.6
+	_camera.position = CAMERA_POSITION + offset * envelope
+
+
+func _reset_impact_juice() -> void:
+	_shake_remaining = 0.0
+	_shake_strength = 0.0
+	_shake_phase = 0.0
+	_camera.position = CAMERA_POSITION
+	_impact_audio.stop()
+	for burst in _impact_pool:
+		burst.restart()
+		burst.emitting = false
+	_next_impact = 0
 
 
 func _build_hud() -> void:
@@ -388,6 +467,8 @@ func _on_match_event(event: Dictionary) -> void:
 		for wall in _wall_nodes[dead]:
 			wall.visible = false
 		_shield_nodes[dead].visible = false
+	if not REDUCED_MOTION and (event["kind"] == "wall" or event["kind"] == "core"):
+		_play_impact(event)
 
 
 func _sync_visuals() -> void:
@@ -425,14 +506,6 @@ func _hud_safe_margins() -> Vector4:
 		maxf(8.0, float(safe.position.y)),
 		maxf(12.0, float(window.x - (safe.position.x + safe.size.x))),
 		maxf(8.0, float(window.y - (safe.position.y + safe.size.y))))
-
-
-func _mat(color: Color, metallic: float, roughness: float) -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.metallic = metallic
-	mat.roughness = roughness
-	return mat
 
 
 func _button(parent: Node, text: String, action: Callable) -> void:
