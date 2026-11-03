@@ -146,6 +146,15 @@ func test_round_uses_arena_look_resources() -> void:
 	assert_true(ball_material.emission_enabled)
 
 
+func test_round_uses_imported_decimated_orb_geometry() -> void:
+	var arena := _arena()
+	var imported: Node3D = load("res://assets/models/orb.glb").instantiate()
+	var mesh: MeshInstance3D = imported.get_child(0) as MeshInstance3D
+	assert_eq(arena._ball.mesh, mesh.mesh, "rendered orb must use imported AI geometry")
+	assert_eq(arena._ball.scale, Vector3.ONE * 0.35)
+	assert_eq(mesh.mesh.get_faces().size() / 3, 2039, "commit reviewed LOD only")
+	imported.free()
+
 func test_wall_impacts_use_midpoints_and_reuse_a_bounded_pool() -> void:
 	var arena := _arena()
 	var child_count := arena.get_child_count()

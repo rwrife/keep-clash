@@ -238,10 +238,13 @@ func _build_world() -> void:
 		_shield_nodes.append(shield_pivot)
 
 	_ball = MeshInstance3D.new()
-	var ball_mesh := SphereMesh.new()
-	ball_mesh.radius = 0.35
-	ball_mesh.height = 0.7
-	_ball.mesh = ball_mesh
+	# ponytail: orb uses one reviewed LOD; add farther LODs after rendered frame-budget checks.
+	var orb_scene: PackedScene = preload("res://assets/models/orb.glb")
+	var imported_orb: Node3D = orb_scene.instantiate()
+	var orb_mesh: MeshInstance3D = imported_orb.get_child(0) as MeshInstance3D
+	_ball.mesh = orb_mesh.mesh
+	imported_orb.free()
+	_ball.scale = Vector3.ONE * 0.35
 	_ball.material_override = ArenaLook.ball_material()
 	add_child(_ball)
 
