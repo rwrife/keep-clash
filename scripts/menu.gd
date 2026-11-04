@@ -3,7 +3,6 @@ extends Control
 
 const ROUND_SCENE := "res://scenes/round.tscn"
 const TEAL := Color("72e0c4")
-const INK := Color("142b38")
 
 var seats: Array[Dictionary] = SeatRouting.make_solo_seats(0, OS.get_name() in ["Android", "iOS"])
 var _difficulty := 0
@@ -11,6 +10,9 @@ var _pending_seat := -1
 var _mapping := false
 var _message := ""
 var _quit_dialog: ConfirmationDialog
+var _settings_panel: SettingsPanel
+var _title: Label
+var _background: ColorRect
 
 
 func _ready() -> void:
@@ -20,7 +22,17 @@ func _ready() -> void:
 	_quit_dialog.dialog_text = "Leave the game?"
 	_quit_dialog.confirmed.connect(func() -> void: get_tree().quit())
 	add_child(_quit_dialog)
+	GameSession.settings.changed.connect(_apply_theme)
 	_render()
+
+
+func _apply_theme() -> void:
+	theme = GameSession.settings.ui_theme()
+	var contrast: bool = GameSession.settings.values["high_contrast"]
+	if is_instance_valid(_title):
+		_title.add_theme_color_override("font_color", Color.WHITE if contrast else TEAL)
+	if is_instance_valid(_background):
+		_background.color = Color.BLACK if contrast else Color("0c1a27")
 
 
 func _notification(what: int) -> void:
@@ -31,6 +43,8 @@ func _notification(what: int) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_instance_valid(_settings_panel):
+		return
 	if _pending_seat >= 0:
 		var device := SeatRouting.device_id_for_event(event)
 		if device != "":
@@ -45,7 +59,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _back() -> void:
-	if _mapping:
+	if is_instance_valid(_settings_panel):
+		_settings_panel._close()
+	elif _mapping:
 		_mapping = false
 		_pending_seat = -1
 		_render()
@@ -56,23 +72,32 @@ func _back() -> void:
 
 
 func _render() -> void:
+	_apply_theme()
 	for child in get_children():
 		if child != _quit_dialog:
 			remove_child(child)
 			child.queue_free()
 	var background := ColorRect.new()
+	_background = background
 	background.color = Color("0c1a27")
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(scroll)
 	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.add_child(center)
 	var column := VBoxContainer.new()
-	column.custom_minimum_size = Vector2(330, 0)
+	column.custom_minimum_size = Vector2(300, 0)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_theme_constant_override("separation", 13)
 	center.add_child(column)
 	var title := Label.new()
+	_title = title
 	title.text = "KEEP CLASH"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_color_override("font_color", TEAL)
@@ -85,9 +110,15 @@ func _render() -> void:
 		_render_home(column)
 	if _message != "":
 		_label(column, _message)
+	if GameSession.profile.error_message != "":
+		_label(column, GameSession.profile.error_message)
+	_apply_theme()
 
 
 func _render_home(column: VBoxContainer) -> void:
+	var profile: Dictionary = GameSession.profile.data
+	_label(column, "%d stars earned | %d wins / %d rounds" % [
+		profile["stars"], profile["records"]["wins"], profile["records"]["rounds"]])
 	_button(column, "SOLO ROUND", func() -> void:
 		seats = SeatRouting.make_solo_seats(_difficulty, OS.get_name() in ["Android", "iOS"])
 		_start()
@@ -98,14 +129,54 @@ func _render_home(column: VBoxContainer) -> void:
 	)
 	_button(column, "Bot difficulty: %s" % SeatRouting.DIFFICULTY_NAMES[_difficulty], func() -> void:
 		_difficulty = (_difficulty + 1) % 3
+		for seat in range(4):
+			if seats[seat]["kind"] == "bot":
+				SeatRouting.set_bot(seats, seat, _difficulty)
 		_render()
 	)
+	for id in ArenaCatalog.IDS:
+		var arena: Dictionary = ArenaCatalog.ARENAS[id]
+		var unlocked := ArenaCatalog.arena_unlocked(id, int(profile["stars"]))
+		var button := _button(column, "%s%s%s" % [
+			"> " if profile["arena"] == id else "", arena["name"],
+			"" if unlocked else " (needs %d stars)" % arena["stars"]], func() -> void:
+			_message = GameSession.select_item("arena", id)
+			_render()
+		)
+		button.disabled = not unlocked
+		if profile["arena"] == id:
+			_label(column, arena["description"])
+	for kind in ["shield", "keep"]:
+		for id in ArenaCatalog.SKINS[kind]:
+			var unlocked := ArenaCatalog.skin_unlocked(kind, id, int(profile["stars"]))
+			var button := _button(column, "%s%s: %s%s" % [
+				"> " if profile[kind + "_skin"] == id else "", kind.capitalize(), id.capitalize(),
+				"" if unlocked else " (needs %d stars)" % ArenaCatalog.SKINS[kind][id]], func() -> void:
+				_message = GameSession.select_item(kind, id)
+				_render()
+			)
+			button.disabled = not unlocked
+	_button(column, "SETTINGS", func() -> void:
+		_settings_panel = SettingsPanel.new()
+		_settings_panel.closed.connect(_render)
+		add_child(_settings_panel)
+	)
 	_button(column, "QUIT", func() -> void: _quit_dialog.popup_centered())
-	_label(column, "A/D or ←/→: steer • Esc/P: pause • drag: touch")
+	var keys := PackedStringArray()
+	for code in GameSession.settings.values["bindings"]["shield_cw"]["keys"]:
+		keys.append(OS.get_keycode_string(int(code)))
+	_label(column, "Steer right: %s | Escape: pause | drag: touch" % ", ".join(keys))
 
 
 func _render_mapping(column: VBoxContainer) -> void:
 	_label(column, "Pick one device per seat; all empty seats become bots.")
+	_button(column, "Bots: %s (cycle)" % SeatRouting.DIFFICULTY_NAMES[_difficulty], func() -> void:
+		_difficulty = (_difficulty + 1) % 3
+		for seat in range(4):
+			if seats[seat]["kind"] == "bot":
+				SeatRouting.set_bot(seats, seat, _difficulty)
+		_render()
+	)
 	for seat in range(4):
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
@@ -167,14 +238,13 @@ func _label(parent: Node, text: String) -> void:
 	label.text = text
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.add_theme_color_override("font_color", Color("bfd8dd"))
 	parent.add_child(label)
 
 
-func _button(parent: Node, text: String, action: Callable) -> void:
+func _button(parent: Node, text: String, action: Callable) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(0, 42)
-	button.add_theme_color_override("font_color", INK)
 	button.pressed.connect(action)
 	parent.add_child(button)
+	return button

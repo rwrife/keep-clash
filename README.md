@@ -2,7 +2,7 @@
 
 Offline 3D castle-shield ball battle: deflect fireballs, smash rival keeps, and win couch or solo rounds on Windows, tablets, and phones.
 
-**Status:** Godot 4.7.2-stable. Issue #3 delivers playable rounds: solo-vs-bots or local seats, pause/restart/rematch, per-device seat mapping and Windows/Android-aware back/quit handling. The #4 primitive PBR art/impact pass and OpenAI image→Hunyuan3D→Godot orb proof are implemented; manual keep/shield models, renderer performance and audio assets remain pending. Progression, settings and save/load follow in #5. See [PLAN.md](PLAN.md) and [issues](https://github.com/rwrife/keep-clash/issues).
+**Status:** Godot 4.7.2-stable. Playable solo-vs-bots/local-seat rounds, pause/restart/rematch, per-device seat mapping and Windows/Android-aware back/quit handling. #4 PBR primitives, impact effects and imported generated orb are implemented; manually modeled keep/shield and renderer checks remain open. Three arena variants, star unlocks, cosmetic palettes and versioned local save/settings are implemented for #5, subject to its #4 dependency. See [PLAN.md](PLAN.md) and [issues](https://github.com/rwrife/keep-clash/issues).
 
 ## Why / for whom
 
@@ -16,7 +16,7 @@ MVP: deterministic ball/shield collision rules, four keeps and destructible wall
 
 ## Privacy / permissions / storage
 
-Local versioned JSON under Godot user data for settings, stars, and records. No network or device permissions required. User-triggered JSON backup/import with validation and schema version; no telemetry. Deleting app data clears records. Never silently overwrite saves when import fails.
+Local versioned JSON under Godot user data for settings, stars, and records. No network or device permissions required; no telemetry. Deleting app data clears records. Corrupt, unsupported, or externally changed saves are preserved rather than silently replaced. User-triggered backup/import remains issue #7.
 
 ## Platforms and development
 
@@ -26,6 +26,6 @@ Install pinned Godot 4.7.2-stable editor and matching export templates, then run
 
 ## Play this build
 
-Install pinned Godot 4.7.2-stable and run `godot --path .` (or open project in editor). Choose **SOLO ROUND** for bottom keyboard seat versus three bots; cycle bot difficulty on menu. **SEAT MAPPING / COUCH PLAY** lets you claim distinct keyboard, mouse, touch or connected gamepads for any of four seats (D-pad/shoulder press claims a gamepad); unclaimed seats fill with bots. Keyboard A/D or ←/→ rotates your shield; mouse aims toward arena point near claimed keep; gamepad left-stick X rotates; touch drag rotates. Esc/P pauses or resumes; pause menu offers restart/menu; round-over offers rematch/menu. No saves or unlocks yet. Device mapping is local; real phone/controller inputs remain to be checked on hardware. Run `godot --headless -s tools/smoke_ten_rounds.gd` for the 10-round headless smoke and the GUT command above for tests. Bot-only rounds in the current smoke end on the 90 s clock, not a knockout; balance remains open.
+Install pinned Godot 4.7.2-stable and run `godot --path .` (or open project in editor). Choose **SOLO ROUND** for bottom keyboard seat versus three bots; cycle bot difficulty on menu. **SEAT MAPPING / COUCH PLAY** lets you claim distinct keyboard, mouse, touch or connected gamepads for any of four seats (D-pad/shoulder press claims a gamepad); unclaimed seats fill with bots. Keyboard A/D or ←/→ rotates your shield; mouse aims toward arena point near claimed keep; gamepad left-stick X rotates; touch drag rotates. Esc/P pauses or resumes; pause menu offers restart/menu; round-over offers rematch/menu. Stars and records save to versioned `user://keep_clash.json`; arena variants unlock at 3 and 8 stars, shield/keep cosmetics at 3 and 6. Settings menu adjusts audio, control bindings, HUD scale, contrast and motion live; changes persist across restarts. Device mapping is local; real phone/controller inputs remain to be checked on hardware. Run `godot --headless -s tools/smoke_ten_rounds.gd` for the 10-round headless smoke and the GUT command above for tests. Bot-only courtyard rounds in the current smoke end on the 90 s clock, not a knockout; balance remains open.
 
 `AppStore/description.txt` is draft listing copy. `AppStore/icon.png` is real generated OpenAI Images art (`gpt-image-2.5-flare` via spark-media); platform icon wiring remains issue #8. Assets and license status: [assets/README.md](assets/README.md). Forward+ PBR materials, glow/SDFGI configuration, impact particles, camera shake and procedural tones are implemented with headless unit-test coverage only, not GPU/rendering verification. Mobile renderer effect scaling and device frame budgets remain unmeasured. Image-to-mesh proof landed as a decimated orb; keep/shield manual art, rendered frame budgets and audio assets remain pending. GPU-heavy generation ran only while shared Qwen inference was absent and ComfyUI queue empty.

@@ -4,6 +4,21 @@ extends GutTest
 
 const ROUND_SCENE: PackedScene = preload("res://scenes/round.tscn")
 
+var _previous_profile: ProfileStore
+var _previous_settings: Dictionary
+
+
+func before_all() -> void:
+	_previous_profile = GameSession.profile
+	_previous_settings = GameSession.settings.values.duplicate(true)
+	GameSession.profile = ProfileStore.new("user://unused_arena_look_test.json")
+	GameSession.settings.apply(ProfileStore.default_settings())
+
+
+func after_all() -> void:
+	GameSession.profile = _previous_profile
+	GameSession.settings.apply(_previous_settings)
+
 
 func test_environment_is_configured_for_forward_plus() -> void:
 	var environment := ArenaLook.build_environment()

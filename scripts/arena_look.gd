@@ -106,6 +106,29 @@ static func impact_tone_db() -> float:
 	return -14.0
 
 
+static func music_pcm() -> AudioStreamWAV:
+	var sample_count := IMPACT_MIX_RATE * 4
+	var data := PackedByteArray()
+	data.resize(sample_count * 2)
+	var notes := [146.832, 174.614, 220.0, 195.998]
+	for index in range(sample_count):
+		var time := float(index) / IMPACT_MIX_RATE
+		var beat := int(time)
+		var local_time := time - beat
+		var envelope := sin(PI * local_time) * sin(PI * local_time)
+		var wave := sin(TAU * notes[beat] * local_time) + 0.3 * sin(TAU * notes[beat] * 1.5 * local_time)
+		data.encode_s16(index * 2, roundi(wave * envelope * 0.16 * 32767.0))
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = IMPACT_MIX_RATE
+	stream.stereo = false
+	stream.data = data
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = sample_count
+	return stream
+
+
 static func impact_pcm(kind: String) -> AudioStreamWAV:
 	## Mono signed 16-bit PCM, with silent endpoints and a short attack/release.
 	assert(kind == "wall" or kind == "core", "Unknown impact kind: %s" % kind)

@@ -18,12 +18,19 @@ var winner := -1
 var over := false
 var ticks := 0
 var _rng := RandomNumberGenerator.new()
+var arena_id := "courtyard"
+var positions: Array
+var serve_speed := 14.0
 
 
-func _init(seed_value: int = 1) -> void:
+func _init(seed_value: int = 1, arena: String = "courtyard") -> void:
+	assert(ArenaCatalog.ARENAS.has(arena))
+	arena_id = arena
+	positions = ArenaCatalog.ARENAS[arena]["positions"].duplicate()
+	serve_speed = ArenaCatalog.ARENAS[arena]["speed"]
 	_rng.seed = seed_value
 	for i in range(4):
-		var center: Vector2 = SEAT_POSITIONS[i]
+		var center: Vector2 = positions[i]
 		keeps.append({"alive": true, "walls": [true, true, true],
 			"shield_angle": (Vector2.ZERO - center).angle(), "deflections": 0})
 
@@ -33,7 +40,7 @@ func serve(angle: float) -> void:
 	if over:
 		return
 	ball_position = Vector2.ZERO
-	ball_velocity = Vector2.RIGHT.rotated(angle) * 14.0
+	ball_velocity = Vector2.RIGHT.rotated(angle) * serve_speed
 
 
 func set_shield_angle(seat: int, angle: float) -> void:
@@ -45,7 +52,7 @@ func bot_target(seat: int, difficulty: int) -> float:
 	## 0 novice, 1 steady, 2 expert. Angle of the shield center on the arc around keep[seat].
 	if seat < 0 or seat >= keeps.size() or difficulty < 0 or difficulty > 2:
 		return 0.0
-	var center: Vector2 = SEAT_POSITIONS[seat]
+	var center: Vector2 = positions[seat]
 	var lead: float = [0.0, 0.15, 0.35][difficulty]
 	var jitter: float = [0.6, 0.22, 0.04][difficulty]
 	var predicted := ball_position + ball_velocity * lead
@@ -68,7 +75,7 @@ func step(dt: float) -> Array[Dictionary]:
 		for seat in range(keeps.size()):
 			if not keeps[seat]["alive"]:
 				continue
-			var center: Vector2 = SEAT_POSITIONS[seat]
+			var center: Vector2 = positions[seat]
 			var shield_t := sweep_circle(ball_position, ball_velocity, remaining, center, SHIELD_RADIUS)
 			if shield_t >= 0.0 and shield_t < first:
 				var shield_angle := (ball_position + ball_velocity * shield_t - center).angle()
@@ -95,7 +102,7 @@ func step(dt: float) -> Array[Dictionary]:
 			break
 		ball_position += ball_velocity * first
 		remaining -= first
-		var center: Vector2 = SEAT_POSITIONS[hit_seat]
+		var center: Vector2 = positions[hit_seat]
 		var normal: Vector2 = (ball_position - center).normalized()
 		if hit_kind == "shield":
 			keeps[hit_seat]["deflections"] += 1

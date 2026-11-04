@@ -31,7 +31,9 @@ Modern 3D arena with Forward+ renderer on Windows: PBR `StandardMaterial3D`, bak
 
 The #4 PBR/juice pass adds Forward+ glow/SDFGI/ACES configuration, seat-tinted materials, pooled impact sparks, decaying camera shake and procedural PCM tones; verification coverage is headless unit tests only (`tests/test_arena_look.gd`), not rendered output. The image→mesh pipeline produced a decimated AI orb imported as visual-only geometry with the deterministic physics sphere unchanged. Keep/shield meshes proved unsuitable; manual asset issues track replacements. Renderer/GPU frame budgets, mobile effect scaling and audio assets remain unmeasured or pending.
 
-Known limits, stated honestly: keyboard-and-mouse in the same round is allowed only as two distinct seats; touch drives one seat; a real gamepad, Android back button, iOS interruption and touch drag are NOT hardware-tested (only the policy functions and scene loop are). In the headless 10-round smoke all rounds currently end on the 90 s clock because bot shields rarely let a core die; balance is tuned in later issues. Input glyph prompts and remapping UI land in #5/#6.
+The #5 progression pass adds atomic versioned JSON storage (`user://keep_clash.json`), three distinct arena layouts and rules modifiers (Courtyard, Diamond Rush, The Narrows), star unlocks, cosmetic skins, live-applied persistent settings, and mobile pause-on-interruption preserving round state. GUT coverage reaches 83 tests and 1,215 assertions.
+
+Known limits, stated honestly: keyboard-and-mouse in the same round is allowed only as two distinct seats; touch drives one seat; a real gamepad, Android back button, iOS interruption and touch drag are NOT hardware-tested (only the policy functions and scene loop are). In the headless 10-round smoke all courtyard rounds currently end on the 90 s clock because bot shields rarely let a core die; balance is tuned in later issues. Input glyph prompts and golden journey tests land in #6. User-directed backup export/import lands in #7.
 
 ## Verification
 

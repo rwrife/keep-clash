@@ -47,9 +47,17 @@ var _tick_count := 0
 var _serve_rng := RandomNumberGenerator.new()
 var _aim_rng := RandomNumberGenerator.new()
 var _aim_bias: Array[float] = [0.0, 0.0, 0.0, 0.0]
+var arena_id := "courtyard"
+var bounds := Vector2(ARENA_HALF, ARENA_HALF)
+var speed_gain := SPEED_GAIN
 
 
-func _init(seat_config: Array[Dictionary], seed_in: int = 1) -> void:
+func _init(seat_config: Array[Dictionary], seed_in: int = 1, arena: String = "courtyard") -> void:
+	assert(ArenaCatalog.ARENAS.has(arena))
+	arena_id = arena
+	bounds = ArenaCatalog.ARENAS[arena]["bounds"]
+	speed_gain = ArenaCatalog.ARENAS[arena]["gain"]
+	time_limit = ArenaCatalog.ARENAS[arena]["seconds"]
 	seats = SeatRouting.duplicate_seats(seat_config)
 	SeatRouting.fill_open_with_bots(seats, 0)
 	seed_value = seed_in
@@ -57,7 +65,7 @@ func _init(seat_config: Array[Dictionary], seed_in: int = 1) -> void:
 
 
 func _start_round() -> void:
-	rules = MatchRules.new(seed_value + round_index)
+	rules = MatchRules.new(seed_value + round_index, arena_id)
 	_serve_rng.seed = seed_value + round_index * 7919
 	_aim_rng.seed = seed_value + round_index * 104729
 	for i in range(4):
@@ -90,6 +98,11 @@ func set_paused(value: bool) -> void:
 		paused = false
 		return
 	paused = value
+
+
+func interrupt() -> void:
+	## Focus/resume never restarts or automatically unpauses the simulation.
+	set_paused(true)
 
 
 func advance(seconds: float) -> int:
@@ -140,7 +153,7 @@ func tick() -> void:
 		var events: Array[Dictionary] = rules.step(TICK)
 		for event in events:
 			if event["kind"] == "shield":
-				var speed := minf(rules.ball_velocity.length() * SPEED_GAIN, MAX_BALL_SPEED)
+				var speed := minf(rules.ball_velocity.length() * speed_gain, MAX_BALL_SPEED)
 				rules.ball_velocity = rules.ball_velocity.normalized() * speed
 			elif event["kind"] == "core" and not rules.over:
 				timer = RESERVE_DELAY
@@ -205,12 +218,12 @@ func _apply_rails() -> void:
 	var pos := rules.ball_position
 	var vel := rules.ball_velocity
 	var bounced := false
-	if absf(pos.x) > ARENA_HALF:
-		pos.x = signf(pos.x) * ARENA_HALF
+	if absf(pos.x) > bounds.x:
+		pos.x = signf(pos.x) * bounds.x
 		vel.x = -signf(pos.x) * absf(vel.x)
 		bounced = true
-	if absf(pos.y) > ARENA_HALF:
-		pos.y = signf(pos.y) * ARENA_HALF
+	if absf(pos.y) > bounds.y:
+		pos.y = signf(pos.y) * bounds.y
 		vel.y = -signf(pos.y) * absf(vel.y)
 		bounced = true
 	if bounced:

@@ -2,6 +2,21 @@ extends GutTest
 ## Issue #3 gates for seat claim invariants, device conflict prevention,
 ## BackPolicy matrix, ArcMesh generation, and scene loading.
 
+var _previous_profile: ProfileStore
+var _previous_settings: Dictionary
+
+
+func before_all() -> void:
+	_previous_profile = GameSession.profile
+	_previous_settings = GameSession.settings.values.duplicate(true)
+	GameSession.profile = ProfileStore.new("user://unused_seats_test.json")
+	GameSession.settings.apply(ProfileStore.default_settings())
+
+
+func after_all() -> void:
+	GameSession.profile = _previous_profile
+	GameSession.settings.apply(_previous_settings)
+
 
 func test_device_cannot_claim_two_seats() -> void:
 	var seats := SeatRouting.make_default_seats()
