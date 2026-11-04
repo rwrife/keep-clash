@@ -2,7 +2,7 @@
 
 Offline 3D castle-shield ball battle: deflect fireballs, smash rival keeps, and win couch or solo rounds on Windows, tablets, and phones.
 
-**Status:** Godot 4.7.2-stable. Issue #3 delivers playable rounds: solo-vs-bots or local seats, pause/restart/rematch, per-device seat mapping and Windows/Android-aware back/quit handling. The #4 primitive PBR art/impact pass and OpenAI image→Hunyuan3D→Godot orb proof are implemented; manual keep/shield models, renderer performance and audio assets remain pending. Progression, settings and save/load follow in #5. See [PLAN.md](PLAN.md) and [issues](https://github.com/rwrife/keep-clash/issues).
+**Status:** Godot 4.7.2-stable. Playable solo-vs-bots/local-seat rounds, pause/restart/rematch, per-device seat mapping and Windows/Android-aware back/quit handling. #4 PBR primitives, impact effects and imported generated orb are implemented; manually modeled keep/shield and renderer checks remain open. Three arena variants, star unlocks, cosmetic palettes and versioned local save/settings are implemented for #5, subject to its #4 dependency. See [PLAN.md](PLAN.md) and [issues](https://github.com/rwrife/keep-clash/issues).
 
 ## Why / for whom
 
