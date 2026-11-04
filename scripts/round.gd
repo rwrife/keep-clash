@@ -8,8 +8,6 @@ const SEAT_COLORS := ArenaLook.SEAT_COLORS
 const WALL_HALF_ARC := PI / 3.0
 const JOY_DEADZONE := 0.25
 const TOUCH_SENSITIVITY := 0.012
-## The user-facing accessibility toggle lands in issue #5.
-const REDUCED_MOTION := false
 const IMPACT_POOL_SIZE := 8
 const SHAKE_SECONDS := 0.25
 const CAMERA_POSITION := Vector3(0, 25, 18)
@@ -38,6 +36,13 @@ var _core_tone: AudioStreamWAV
 var _shake_remaining := 0.0
 var _shake_strength := 0.0
 var _shake_phase := 0.0
+var _shield_mats: Array[StandardMaterial3D] = []
+var _floor_mat: StandardMaterial3D
+var _settings_panel: SettingsPanel
+var _top: VBoxContainer
+var _strip: GridContainer
+var _pause_button: Button
+var _interrupted := false
 
 
 func _ready() -> void:
@@ -47,26 +52,32 @@ func _ready() -> void:
 		SeatRouting.make_solo_seats(0, false) if session == null
 		else SeatRouting.duplicate_seats(session.seats)
 	)
-	controller = RoundController.new(seats, 1 if session == null else session.match_seed)
+	controller = RoundController.new(seats, 1 if session == null else session.match_seed,
+		"courtyard" if session == null else String(session.profile.data["arena"]))
 	controller.event_emitted.connect(_on_match_event)
 	_build_world()
 	_build_hud()
+	GameSession.settings.changed.connect(_apply_settings)
+	get_viewport().size_changed.connect(_layout_hud)
+	_apply_settings()
 	_refresh_overlay()
 
 
 func _process(delta: float) -> void:
-	if not REDUCED_MOTION:
+	if not _reduced_motion():
 		# Keep the mouse aim ray independent of the previous frame's visual shake.
 		_camera.position = CAMERA_POSITION
 	_read_human_input(delta)
 	controller.advance(delta)
 	_sync_visuals()
 	_update_hud()
-	if not REDUCED_MOTION:
-		_update_impact_juice(delta)
+	if not _reduced_motion():
+		_update_impact_juice(0.0 if controller.paused else delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_instance_valid(_settings_panel):
+		return
 	if event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(InputSetup.ACTION_PAUSE):
 		if _quit_dialog.visible:
 			_quit_dialog.hide()
@@ -74,9 +85,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_paused(not controller.paused)
 		get_viewport().set_input_as_handled()
 		return
-	if event is InputEventScreenDrag:
+	if event is InputEventScreenDrag and not controller.paused:
 		for seat in _seats_for_device("touch"):
-			controller.nudge_target(seat, event.delta.x * TOUCH_SENSITIVITY * RoundController.INPUT_SIGN[seat])
+			controller.nudge_target(seat, event.relative.x * TOUCH_SENSITIVITY * RoundController.INPUT_SIGN[seat])
 
 
 func _notification(what: int) -> void:
@@ -86,11 +97,23 @@ func _notification(what: int) -> void:
 		NOTIFICATION_WM_GO_BACK_REQUEST:
 			_handle_back()
 		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT:
-			if controller.state == RoundController.State.PLAYING:
-				_set_paused(true)
+			if controller != null and controller.state != RoundController.State.ROUND_OVER:
+				_interrupted = true
+				controller.interrupt()
+				if is_instance_valid(_pause_panel):
+					_pause_panel.visible = true
+				if is_instance_valid(_impact_audio):
+					_impact_audio.stop()
+		NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN:
+			# Resuming the OS is not consent to resume a moving round.
+			if _interrupted and controller != null:
+				controller.interrupt()
 
 
 func _handle_back() -> void:
+	if is_instance_valid(_settings_panel):
+		_settings_panel._close()
+		return
 	var action := BackPolicy.back_action("round", OS.get_name(), controller.paused)
 	match action:
 		"pause":
@@ -111,25 +134,29 @@ func _handle_close_request() -> void:
 
 func _set_paused(value: bool) -> void:
 	controller.set_paused(value)
-	_pause_panel.visible = value
+	_pause_panel.visible = controller.paused
+	if not value:
+		_interrupted = false
 
 
 func _restart() -> void:
 	controller.restart()
-	if not REDUCED_MOTION:
-		_reset_impact_juice()
+	_reset_impact_juice()
 	_set_paused(false)
+	_apply_settings()
 	_refresh_overlay()
 
 
 func _rematch() -> void:
 	controller.rematch()
-	if not REDUCED_MOTION:
-		_reset_impact_juice()
+	_reset_impact_juice()
+	_apply_settings()
 	_refresh_overlay()
 
 
 func _read_human_input(delta: float) -> void:
+	if _interrupted or _pause_panel.visible or is_instance_valid(_settings_panel):
+		return
 	for seat in range(4):
 		if controller.seats[seat]["kind"] != "human":
 			continue
@@ -137,7 +164,7 @@ func _read_human_input(delta: float) -> void:
 		var sign_dir: float = RoundController.INPUT_SIGN[seat]
 		match device:
 			"keyboard":
-				var axis := Input.get_action_strength(InputSetup.ACTION_CW) - Input.get_action_strength(InputSetup.ACTION_CCW)
+				var axis := InputSetup.device_strength(InputSetup.ACTION_CW) - InputSetup.device_strength(InputSetup.ACTION_CCW)
 				if not is_zero_approx(axis):
 					controller.rotate_target(seat, axis * sign_dir, delta)
 			"mouse":
@@ -148,6 +175,9 @@ func _read_human_input(delta: float) -> void:
 				if device.begins_with("joy_"):
 					var pad := device.substr(4).to_int()
 					var axis := Input.get_joy_axis(pad, JOY_AXIS_LEFT_X)
+					var buttons := InputSetup.device_strength(InputSetup.ACTION_CW, pad) - InputSetup.device_strength(InputSetup.ACTION_CCW, pad)
+					if not is_zero_approx(buttons):
+						axis = buttons
 					if absf(axis) > JOY_DEADZONE:
 						controller.rotate_target(seat, axis * sign_dir, delta)
 
@@ -166,7 +196,7 @@ func _mouse_arena_angle() -> float:
 		return INF
 	for seat in range(4):
 		if controller.seats[seat]["device"] == "mouse" and controller.seats[seat]["kind"] == "human":
-			var center: Vector2 = MatchRules.SEAT_POSITIONS[seat]
+			var center: Vector2 = controller.rules.positions[seat]
 			var hit := Vector2(origin.x + dir.x * distance, origin.z + dir.z * distance)
 			if (hit - center).length() < 6.0:
 				return (hit - center).angle()
@@ -192,16 +222,16 @@ func _build_world() -> void:
 	sun.shadow_enabled = true
 	add_child(sun)
 
-	var floor_mat := ArenaLook.floor_material()
+	_floor_mat = ArenaLook.floor_material()
 	var floor_mesh := PlaneMesh.new()
 	floor_mesh.size = Vector2(38, 38)
 	var floor_node := MeshInstance3D.new()
 	floor_node.mesh = floor_mesh
-	floor_node.material_override = floor_mat
+	floor_node.material_override = _floor_mat
 	add_child(floor_node)
 
 	for seat in range(4):
-		var center: Vector2 = MatchRules.SEAT_POSITIONS[seat]
+		var center: Vector2 = controller.rules.positions[seat]
 		var origin3 := Vector3(center.x, 0, center.y)
 		var keep := Node3D.new()
 		keep.position = origin3
@@ -212,6 +242,10 @@ func _build_world() -> void:
 		core_mesh.top_radius = MatchRules.CORE_RADIUS
 		core_mesh.bottom_radius = MatchRules.CORE_RADIUS + 0.15
 		core_mesh.height = 1.6
+		if controller.seats[seat]["kind"] == "human" and GameSession.profile.data["keep_skin"] == "gilded":
+			core_mesh.radial_segments = 8
+			core_mesh.top_radius = 0.3
+			core_mesh.height = 2.0
 		core.mesh = core_mesh
 		core.position.y = 0.8
 		core.material_override = core_mat
@@ -231,8 +265,11 @@ func _build_world() -> void:
 
 		var shield_pivot := Node3D.new()
 		var shield := MeshInstance3D.new()
-		shield.mesh = ArcMesh.build(MatchRules.SHIELD_RADIUS - 0.16, MatchRules.SHIELD_RADIUS + 0.16, 0.7, MatchRules.SHIELD_HALF_ARC * 0.95)
-		shield.material_override = ArenaLook.shield_material(seat)
+		var aurora: bool = controller.seats[seat]["kind"] == "human" and GameSession.profile.data["shield_skin"] == "aurora"
+		shield.mesh = ArcMesh.build(MatchRules.SHIELD_RADIUS - 0.16, MatchRules.SHIELD_RADIUS + (0.24 if aurora else 0.16), 1.0 if aurora else 0.7, MatchRules.SHIELD_HALF_ARC * 0.95)
+		var shield_mat := ArenaLook.shield_material(seat)
+		shield.material_override = shield_mat
+		_shield_mats.append(shield_mat)
 		shield_pivot.add_child(shield)
 		keep.add_child(shield_pivot)
 		_shield_nodes.append(shield_pivot)
@@ -247,6 +284,7 @@ func _build_world() -> void:
 	_ball.scale = Vector3.ONE * 0.35
 	_ball.material_override = ArenaLook.ball_material()
 	add_child(_ball)
+	_build_rails()
 
 	_camera = Camera3D.new()
 	add_child(_camera)
@@ -254,8 +292,21 @@ func _build_world() -> void:
 	_camera.fov = 52
 	_camera.look_at(Vector3.ZERO, Vector3.UP)
 	_camera.current = true
-	if not REDUCED_MOTION:
-		_build_impact_juice()
+	_build_impact_juice()
+
+
+func _build_rails() -> void:
+	for side in range(4):
+		var rail := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		var horizontal := side < 2
+		box.size = Vector3(controller.bounds.x * 2.0 if horizontal else 0.12, 0.12,
+			0.12 if horizontal else controller.bounds.y * 2.0)
+		rail.mesh = box
+		var direction := -1.0 if side % 2 == 0 else 1.0
+		rail.position = Vector3(0, 0.06, direction * controller.bounds.y) if horizontal else Vector3(direction * controller.bounds.x, 0.06, 0)
+		rail.material_override = ArenaLook.wall_material()
+		add_child(rail)
 
 
 func _build_impact_juice() -> void:
@@ -268,6 +319,7 @@ func _build_impact_juice() -> void:
 	_wall_tone = ArenaLook.impact_pcm("wall")
 	_core_tone = ArenaLook.impact_pcm("core")
 	_impact_audio = AudioStreamPlayer.new()
+	_impact_audio.bus = "SFX"
 	_impact_audio.volume_db = ArenaLook.impact_tone_db()
 	add_child(_impact_audio)
 
@@ -275,7 +327,7 @@ func _build_impact_juice() -> void:
 func _play_impact(event: Dictionary) -> void:
 	var kind: String = event["kind"]
 	var seat: int = event["seat"]
-	var center: Vector2 = MatchRules.SEAT_POSITIONS[seat]
+	var center: Vector2 = controller.rules.positions[seat]
 	var impact_position := Vector3(center.x, 0.8, center.y)
 	var core_hit := kind == "core"
 	if not core_hit:
@@ -284,17 +336,18 @@ func _play_impact(event: Dictionary) -> void:
 		var angle := -PI / 2.0 + sector * TAU / 3.0
 		impact_position += Vector3(cos(angle), 0, sin(angle)) * MatchRules.WALL_RADIUS
 		impact_position.y = 0.6
-	var burst: GPUParticles3D = _impact_pool[_next_impact]
-	_next_impact = (_next_impact + 1) % IMPACT_POOL_SIZE
-	burst.position = impact_position
-	burst.amount_ratio = 1.0 if core_hit else 0.5
-	var process: ParticleProcessMaterial = burst.process_material
-	process.initial_velocity_min = 3.5 if core_hit else 2.0
-	process.initial_velocity_max = 7.0 if core_hit else 5.0
-	burst.restart()
-	burst.emitting = true
-	_shake_remaining = SHAKE_SECONDS
-	_shake_strength = maxf(_shake_strength, 0.24 if core_hit else 0.09)
+	if not _reduced_motion():
+		var burst: GPUParticles3D = _impact_pool[_next_impact]
+		_next_impact = (_next_impact + 1) % IMPACT_POOL_SIZE
+		burst.position = impact_position
+		burst.amount_ratio = 1.0 if core_hit else 0.5
+		var process: ParticleProcessMaterial = burst.process_material
+		process.initial_velocity_min = 3.5 if core_hit else 2.0
+		process.initial_velocity_max = 7.0 if core_hit else 5.0
+		burst.restart()
+		burst.emitting = true
+		_shake_remaining = SHAKE_SECONDS
+		_shake_strength = maxf(_shake_strength, 0.24 if core_hit else 0.09)
 	_impact_audio.stream = _core_tone if core_hit else _wall_tone
 	var difficulty: int = controller.seats[seat]["difficulty"]
 	_impact_audio.pitch_scale = 0.95 + 0.05 * difficulty if controller.seats[seat]["kind"] == "bot" else 1.0
@@ -333,6 +386,7 @@ func _build_hud() -> void:
 	var safe := _hud_safe_margins()
 
 	var top := VBoxContainer.new()
+	_top = top
 	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	top.offset_left = safe.x
 	top.offset_top = safe.y
@@ -342,16 +396,10 @@ func _build_hud() -> void:
 	# Four seat readouts never fit a 360px phone in one row; two columns keep
 	# every label on-screen without shrinking text below readable size.
 	var narrow := get_viewport().get_visible_rect().size.x < 640.0
-	var strip: Container
-	if narrow:
-		var grid := GridContainer.new()
-		grid.columns = 2
-		top.add_child(grid)
-		strip = grid
-	else:
-		var row := HBoxContainer.new()
-		top.add_child(row)
-		strip = row
+	var strip := GridContainer.new()
+	_strip = strip
+	strip.columns = 2 if narrow else 4
+	top.add_child(strip)
 	strip.add_theme_constant_override("separation", 10)
 	for seat in range(4):
 		var label := Label.new()
@@ -370,6 +418,7 @@ func _build_hud() -> void:
 	_hud.add_child(_center_label)
 
 	var pause_button := Button.new()
+	_pause_button = pause_button
 	pause_button.text = "II"
 	pause_button.custom_minimum_size = Vector2(56, 56)
 	pause_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -399,6 +448,11 @@ func _build_hud() -> void:
 	_pause_panel.add_child(pause_column)
 	_button(pause_column, "Resume", func() -> void: _set_paused(false))
 	_button(pause_column, "Restart round", _restart)
+	_button(pause_column, "Settings", func() -> void:
+		if not is_instance_valid(_settings_panel):
+			_settings_panel = SettingsPanel.new()
+			_hud.add_child(_settings_panel)
+	)
 	_button(pause_column, "Quit to menu", func() -> void:
 		_quit_to_app = false
 		if BackPolicy.confirm_leave_round(OS.get_name()):
@@ -424,6 +478,10 @@ func _panel(size: Vector2) -> Control:
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = size
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	panel.offset_left = -size.x / 2.0
+	panel.offset_right = size.x / 2.0
+	panel.offset_top = -size.y / 2.0
+	panel.offset_bottom = size.y / 2.0
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.04, 0.09, 0.14, 0.92)
 	style.set_corner_radius_all(10)
@@ -447,6 +505,7 @@ func _refresh_overlay() -> void:
 		else:
 			_overlay_title.text = "SEAT %d WINS" % (winner + 1)
 		for child in _overlay_lines.get_children():
+			_overlay_lines.remove_child(child)
 			child.queue_free()
 		var stars: Array = result["stars"]
 		for seat in range(4):
@@ -457,12 +516,19 @@ func _refresh_overlay() -> void:
 			_label(_overlay_lines, "%d %s · %d★%s" % [seat + 1, SeatRouting.describe(entry), stars[seat], suffix])
 		_button(_overlay_lines, "REMATCH", _rematch)
 		_button(_overlay_lines, "MENU", func() -> void: get_tree().change_scene_to_file(MENU_SCENE))
+		_label(_overlay_lines, "%d local stars earned" % GameSession.profile.data["stars"])
+		if GameSession.profile.error_message != "":
+			_label(_overlay_lines, GameSession.profile.error_message)
 		_overlay.visible = true
+		_layout_hud()
 	else:
 		_overlay.visible = false
 
 
 func _on_match_event(event: Dictionary) -> void:
+	if event["kind"] == "round_over" and controller.state == RoundController.State.ROUND_OVER:
+		GameSession.record_round(controller)
+		_refresh_overlay()
 	if event["kind"] == "core":
 		var dead: int = event["seat"]
 		_core_mats[dead].albedo_color = Color("3d434b")
@@ -470,12 +536,13 @@ func _on_match_event(event: Dictionary) -> void:
 		for wall in _wall_nodes[dead]:
 			wall.visible = false
 		_shield_nodes[dead].visible = false
-	if not REDUCED_MOTION and (event["kind"] == "wall" or event["kind"] == "core"):
+	if event["kind"] == "wall" or event["kind"] == "core":
 		_play_impact(event)
 
 
 func _sync_visuals() -> void:
 	for seat in range(4):
+		_shield_nodes[seat].visible = controller.rules.keeps[seat]["alive"]
 		var angle: float = controller.rules.keeps[seat]["shield_angle"]
 		_shield_nodes[seat].rotation.y = -angle
 		var walls: Array = controller.rules.keeps[seat]["walls"]
@@ -497,6 +564,71 @@ func _update_hud() -> void:
 		var walls_left: int = controller.rules.keeps[seat]["walls"].count(true)
 		var status := "down" if not controller.rules.keeps[seat]["alive"] else "%d walls" % walls_left
 		_seat_labels[seat].text = "S%d %s · %s" % [seat + 1, SeatRouting.describe(controller.seats[seat]), status]
+
+
+func _reduced_motion() -> bool:
+	return GameSession.settings.values["reduced_motion"]
+
+
+func _apply_settings() -> void:
+	var contrast: bool = GameSession.settings.values["high_contrast"]
+	var ui_theme := GameSession.settings.ui_theme()
+	for child in _hud.get_children():
+		if child is Control:
+			child.theme = ui_theme
+	for panel in [_pause_panel, _overlay]:
+		var style: StyleBoxFlat = panel.get_theme_stylebox("panel").duplicate()
+		style.bg_color = Color.BLACK if contrast else Color(0.04, 0.09, 0.14, 0.92)
+		style.border_color = Color.WHITE
+		style.set_border_width_all(2 if contrast else 0)
+		panel.add_theme_stylebox_override("panel", style)
+	if _reduced_motion():
+		_reset_impact_juice()
+	_floor_mat.albedo_color = Color("080c14") if contrast else ArenaCatalog.ARENAS[controller.arena_id]["floor"]
+	for seat in range(4):
+		var tint: Color = SEAT_COLORS[seat]
+		var human: bool = controller.seats[seat]["kind"] == "human"
+		var gilded: bool = human and GameSession.profile.data["keep_skin"] == "gilded"
+		var aurora: bool = human and GameSession.profile.data["shield_skin"] == "aurora"
+		_core_mats[seat].albedo_color = tint.lightened(0.35) if contrast else (tint.lerp(Color("ffd577"), 0.55) if gilded else tint.darkened(0.18))
+		if not controller.rules.keeps[seat]["alive"]:
+			_core_mats[seat].albedo_color = Color("3d434b")
+		_shield_mats[seat].albedo_color = Color.WHITE if contrast else tint.lightened(0.45 if aurora else 0.12)
+		_shield_mats[seat].emission = tint.lightened(0.5) if aurora else tint
+		for wall in _wall_nodes[seat]:
+			wall.material_override.albedo_color = Color.WHITE if contrast else Color("91a5b8")
+	_layout_hud()
+
+
+func _layout_hud() -> void:
+	if not is_instance_valid(_top):
+		return
+	var scale_value := float(GameSession.settings.values["hud_scale"])
+	var narrow := get_viewport().get_visible_rect().size.x < 640.0 * scale_value
+	var safe := _hud_safe_margins()
+	_strip.columns = 2 if narrow else 4
+	_top.offset_left = safe.x
+	_top.offset_top = safe.y + 64.0 * scale_value
+	_top.offset_right = -safe.z
+	_pause_button.offset_left = -safe.z - 56.0 * scale_value
+	_pause_button.offset_top = safe.y
+	_pause_button.offset_right = -safe.z
+	_pause_button.offset_bottom = safe.y + 56.0 * scale_value
+	_pause_button.custom_minimum_size = Vector2.ONE * 56.0 * scale_value
+	var contrast: bool = GameSession.settings.values["high_contrast"]
+	for seat in range(4):
+		_seat_labels[seat].add_theme_font_size_override("font_size", roundi((13.0 if narrow else 16.0) * scale_value))
+		_seat_labels[seat].add_theme_color_override("font_color", Color.WHITE if contrast else SEAT_COLORS[seat])
+	_center_label.add_theme_font_size_override("font_size", roundi((26.0 if narrow else 46.0) * scale_value))
+	_center_label.add_theme_color_override("font_color", Color.WHITE if contrast else Color("f2e6c8"))
+	_overlay_title.add_theme_font_size_override("font_size", roundi(30.0 * scale_value))
+	for panel in [_pause_panel, _overlay]:
+		var minimum: Vector2 = panel.get_combined_minimum_size()
+		var width := minf(maxf(minimum.x, 280.0), get_viewport().get_visible_rect().size.x - safe.x - safe.z)
+		panel.offset_left = -width / 2.0
+		panel.offset_right = width / 2.0
+		panel.offset_top = -minimum.y / 2.0
+		panel.offset_bottom = minimum.y / 2.0
 
 
 func _hud_safe_margins() -> Vector4:
@@ -522,4 +654,5 @@ func _button(parent: Node, text: String, action: Callable) -> void:
 func _label(parent: Node, text: String) -> void:
 	var label := Label.new()
 	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	parent.add_child(label)
