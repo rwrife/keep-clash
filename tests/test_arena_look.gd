@@ -153,7 +153,7 @@ func test_round_uses_arena_look_resources() -> void:
 		var wall_material: StandardMaterial3D = wall.material_override
 		assert_eq(wall_material.metallic, ArenaLook.wall_material().metallic)
 		var shield: MeshInstance3D = arena._shield_nodes[seat].get_child(0)
-		var shield_material: StandardMaterial3D = shield.material_override
+		var shield_material: StandardMaterial3D = shield.get_surface_override_material(0)
 		assert_true(shield_material.emission_enabled)
 		assert_eq(shield_material.emission, ArenaLook.shield_material(seat).emission)
 	var ball: MeshInstance3D = arena._ball
