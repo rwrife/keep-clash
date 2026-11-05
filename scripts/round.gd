@@ -1,5 +1,5 @@
 extends Node3D
-## Round scene: PBR primitive arena with impact feedback, four keeps/shields,
+## Round scene: PBR arena with impact feedback, four keeps/shields,
 ## ball, adaptive HUD, pause/restart/rematch loop and per-device seat routing.
 ## The rules run in RoundController; this node only renders and feeds input.
 
@@ -11,6 +11,12 @@ const TOUCH_SENSITIVITY := 0.012
 const IMPACT_POOL_SIZE := 8
 const SHAKE_SECONDS := 0.25
 const CAMERA_POSITION := Vector3(0, 25, 18)
+const SHIELD_SCENES: Array[PackedScene] = [
+	preload("res://assets/models/shield_lod0.glb"),
+	preload("res://assets/models/shield_lod1.glb"),
+	preload("res://assets/models/shield_lod2.glb"),
+]
+const SHIELD_LOD_DISTANCES := [0.0, 40.0, 60.0, 0.0]
 
 var controller: RoundController
 
@@ -264,13 +270,21 @@ func _build_world() -> void:
 		_wall_nodes.append(walls)
 
 		var shield_pivot := Node3D.new()
-		var shield := MeshInstance3D.new()
 		var aurora: bool = controller.seats[seat]["kind"] == "human" and GameSession.profile.data["shield_skin"] == "aurora"
-		shield.mesh = ArcMesh.build(MatchRules.SHIELD_RADIUS - 0.16, MatchRules.SHIELD_RADIUS + (0.24 if aurora else 0.16), 1.0 if aurora else 0.7, MatchRules.SHIELD_HALF_ARC * 0.95)
 		var shield_mat := ArenaLook.shield_material(seat)
-		shield.material_override = shield_mat
 		_shield_mats.append(shield_mat)
-		shield_pivot.add_child(shield)
+		for lod in range(SHIELD_SCENES.size()):
+			var imported: Node3D = SHIELD_SCENES[lod].instantiate()
+			var source := imported.find_child("Shield", true, false) as MeshInstance3D
+			var shield := MeshInstance3D.new()
+			shield.name = "ShieldLOD%d" % lod
+			shield.mesh = source.mesh
+			imported.free()
+			shield.set_surface_override_material(0, shield_mat)
+			shield.scale.y = 1.0 / 0.7 if aurora else 1.0
+			shield.visibility_range_begin = SHIELD_LOD_DISTANCES[lod]
+			shield.visibility_range_end = SHIELD_LOD_DISTANCES[lod + 1]
+			shield_pivot.add_child(shield)
 		keep.add_child(shield_pivot)
 		_shield_nodes.append(shield_pivot)
 
