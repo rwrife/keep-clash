@@ -5,7 +5,7 @@ Every shipped asset gets a row here. Origins: `ai-generated` (spark-media image 
 | Asset | Origin | Source / issue | Notes |
 |---|---|---|---|
 | AppStore/icon.png | ai-generated | `gpt-image-2.5-flare` via spark-media, 2026-10-22 (`~/media/keep-clash/images/20261022T050732Z_openai_181ed0.png`) | 1024×1024, no text; platform icon wiring = issue #8 |
-| Keep | manual-pending | `assets/references/keep.png`, #4, #14 | The generated model had 943,544 faces and 322,666 disconnected bodies; keep the seat-tinted CylinderMesh until a manual model meets the art spec (#14). |
+| Keep LOD0/LOD1/LOD2 | manual | `assets/references/keep.png` (mood only), #4, #14; `tools/gen_keep.gd` → `assets/models/keep_lod0.glb`, `keep_lod1.glb`, `keep_lod2.glb` | Original crenellated masonry tower with seat-metal band and forged details; imported counts 5,344 / 1,376 / 384 against ceilings 6,000 / 1,500 / 400. Pinned Godot import and GUT pass; rendered/device review and performance remain unverified. |
 | Shield LOD0/LOD1/LOD2 | manual | `assets/references/shield.png`, #4, #15; `tools/gen_shield.gd` → `assets/models/shield_lod0.glb`, `shield_lod1.glb`, `shield_lod2.glb` | Original layered horizontal arc: beveled seat-metal plates, stone backing, forged perimeter bands/end caps and dome rivets. 1,532 / 556 / 268 triangles against ceilings of 4,000 / 1,000 / 300. Runtime GLB wiring verified with pinned Godot import/GUT; rendered/device review remains unverified. |
 | Orb | ai-generated | `assets/references/orb.png` → `assets/models/orb.glb` | OpenAI Images `gpt-image-2.5-flare` → Hunyuan3D 2.1; largest connected body simplified from 556,894 to 2,039 triangles; 0.35m radius scale; metallic PBR amber emission; gameplay collision remains deterministic `MatchRules` sphere. One LOD only; no device frame budget measured. |
 | Arena set ×3 | primitive (issue #5) | — | layout variants remain pending; #5 tracks them |
@@ -32,3 +32,23 @@ godot --headless --path . -s res://addons/gut/gut_cmdln.gd -gdir=res://tests -gi
 ```
 
 Local #15 verification (2026-11-05): pinned Godot 4.7.2-stable Linux arm64 editor (official `ed1daf0bf`) imported all three GLBs, regenerated them twice from `tools/gen_shield.gd` with identical SHA-256 hashes, and passed GUT (87/87 tests, 1,968 assertions) plus the 10-round headless smoke (`SUCCESS: 10 consecutive rounds completed cleanly`). The GUT tests inspect actual imported surfaces/materials/dimensions, generator topology parity, all seat/layout pivots and rotations, LOD wiring, aurora, and live contrast. All three GLBs use Git LFS. Generation and smoke report a two-ObjectDB-instance leak warning at exit; no failures. No visual, screenshot, GPU/frame-budget, mobile or device checks are claimed; these still need measured review.
+
+## Manual castle keep (#14; renderer/device review pending)
+
+The rejected AI keep (943,544 faces, 322,666 disconnected bodies) is not used. The new source is hand-authored in `tools/gen_keep.gd`: staggered stone blocks around a flared tower foot, eight separated crown teeth, metal caps, a seat-colored band/plates and forged slit-window frames/studs. The reference contributes only a stone/metal mood; its pointed roof and turret arrangement are not copied. No new image/AI-mesh generation, textures, Blender, third-party assets or dependencies are used.
+
+All LODs target an identity-transform ground-center pivot at (0,0,0), Y up, Y bounds 0–1.6 m and X/Z bounds ±0.65 m. LOD1 removes stone bevels and reduces courses/segments; LOD2 keeps the complete crenellated silhouette, seat band and simplified window details. The four non-emissive `StandardMaterial3D` surfaces are `SeatMetal` (metallic 0.5 / roughness 0.32), `Limestone` (0.0 / 0.86), `Mortar` (0.0 / 0.95) and `ForgedIron` (0.85 / 0.30). Only surface 0 receives the existing four-seat material override. Human gilded seats retain gold-blended tint and a 2.0 m height through Y scaling (ground contact stays at 0); stone and forged materials stay intact. High contrast, elimination and reset continue using the shared per-seat material across all LODs.
+
+Runtime ranges match the shield: [0,40), [40,60), [60,∞) m, without range margins/fades. Meshes are static visuals only: no physics bodies, collision shapes, skeletons or animations. `scripts/match_rules.gd` is untouched; its analytic 0.45 m core collision is independent of the 0.65 m visual base radius and skin height.
+
+Local verification (2026-11-06): official Godot 4.7.2-stable Linux arm64 (`ed1daf0bf`) generated and imported all three GLBs. Re-running `tools/gen_keep.gd` produced identical SHA-256 hashes for each GLB. GUT passed 92/92 tests and 3,141 assertions across 8 scripts; `tools/smoke_ten_rounds.gd` printed `SUCCESS: 10 consecutive rounds completed cleanly`. Generator and smoke emitted two ObjectDB-instance leak warnings at exit. All three GLBs are stored through Git LFS.
+
+```sh
+godot --headless --path . --import --quit
+godot --headless --path . -s res://tools/gen_keep.gd
+godot --headless --path . --import --quit
+godot --headless --path . -s res://addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit
+godot --headless --path . -s res://tools/smoke_ten_rounds.gd
+```
+
+`tests/test_keep_model.gd` inspects imported triangle counts/materials/bounds, generator topology parity, crown gaps, seat/layout/skin wiring, contiguous LOD ranges and core contact distance. Rendered desktop/mobile silhouette and camera framing, actual distance switching, GPU/frame budgets and real-device checks still require measured review.

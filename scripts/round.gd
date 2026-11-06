@@ -11,6 +11,12 @@ const TOUCH_SENSITIVITY := 0.012
 const IMPACT_POOL_SIZE := 8
 const SHAKE_SECONDS := 0.25
 const CAMERA_POSITION := Vector3(0, 25, 18)
+const KEEP_SCENES: Array[PackedScene] = [
+	preload("res://assets/models/keep_lod0.glb"),
+	preload("res://assets/models/keep_lod1.glb"),
+	preload("res://assets/models/keep_lod2.glb"),
+]
+const KEEP_LOD_DISTANCES := [0.0, 40.0, 60.0, 0.0]
 const SHIELD_SCENES: Array[PackedScene] = [
 	preload("res://assets/models/shield_lod0.glb"),
 	preload("res://assets/models/shield_lod1.glb"),
@@ -22,6 +28,7 @@ var controller: RoundController
 
 var _ball: MeshInstance3D
 var _shield_nodes: Array[Node3D] = []
+var _keep_nodes: Array[Node3D] = []
 var _wall_nodes: Array[Array] = []
 var _core_mats: Array[StandardMaterial3D] = []
 var _hud: CanvasLayer
@@ -243,19 +250,22 @@ func _build_world() -> void:
 		keep.position = origin3
 		add_child(keep)
 		var core_mat := ArenaLook.keep_material(seat)
-		var core := MeshInstance3D.new()
-		var core_mesh := CylinderMesh.new()
-		core_mesh.top_radius = MatchRules.CORE_RADIUS
-		core_mesh.bottom_radius = MatchRules.CORE_RADIUS + 0.15
-		core_mesh.height = 1.6
-		if controller.seats[seat]["kind"] == "human" and GameSession.profile.data["keep_skin"] == "gilded":
-			core_mesh.radial_segments = 8
-			core_mesh.top_radius = 0.3
-			core_mesh.height = 2.0
-		core.mesh = core_mesh
-		core.position.y = 0.8
-		core.material_override = core_mat
-		keep.add_child(core)
+		var keep_pivot := Node3D.new()
+		var gilded: bool = controller.seats[seat]["kind"] == "human" and GameSession.profile.data["keep_skin"] == "gilded"
+		for lod in range(KEEP_SCENES.size()):
+			var imported: Node3D = KEEP_SCENES[lod].instantiate()
+			var source := imported.find_child("Keep", true, false) as MeshInstance3D
+			var core := MeshInstance3D.new()
+			core.name = "KeepLOD%d" % lod
+			core.mesh = source.mesh
+			imported.free()
+			core.set_surface_override_material(0, core_mat)
+			core.scale.y = 2.0 / 1.6 if gilded else 1.0
+			core.visibility_range_begin = KEEP_LOD_DISTANCES[lod]
+			core.visibility_range_end = KEEP_LOD_DISTANCES[lod + 1]
+			keep_pivot.add_child(core)
+		keep.add_child(keep_pivot)
+		_keep_nodes.append(keep_pivot)
 		_core_mats.append(core_mat)
 
 		var walls: Array = []
