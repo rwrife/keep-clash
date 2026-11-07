@@ -16,7 +16,11 @@ MVP: deterministic ball/shield collision rules, four keeps and destructible wall
 
 ## Privacy / permissions / storage
 
-Local versioned JSON under Godot user data for settings, stars, and records. No network or device permissions required; no telemetry. Deleting app data clears records. Corrupt, unsupported, or externally changed saves are preserved rather than silently replaced. User-triggered backup/import remains issue #7.
+Local versioned JSON under Godot user data contains all settings (including controls), stars, unlocked arena/cosmetic selections, and records. Unlocks are derived from the exported star total. No accounts, telemetry, network access, or broad storage permissions are required; Android network permissions are explicitly disabled and checked by the CI GUT suite.
+
+Use **EXPORT BACKUP** / **IMPORT BACKUP (REPLACE PROFILE)** on the menu to choose a local JSON file through the platform's native save/open dialog. Export copies the active profile without changing the game save; keep backups somewhere private (a user-chosen synchronized folder may be synced by its provider, not by the game). Import replaces the entire profile, applies settings live, and accepts validated schema v2 or supported v1 migration. Empty, oversized, malformed, or unsupported backups leave the current save byte-for-byte intact and leave active settings/progress unchanged. Writes stage and verify a sibling temporary file before atomic replacement; imports also recheck the loaded save for external changes immediately before replacement. Invalid/unknown existing saves remain read-only, including for import, until addressed outside the game.
+
+Canceling a dialog changes nothing. Platforms without native file-dialog support report that limitation rather than using an in-game picker or requesting permissions. Deleting app data clears local progress, but not exported backups. This partial #7 change has headless tests only; native mobile file-dialog support and device behavior remain unverified. #5 remains open as a dependency, so #7 stays open.
 
 ## Platforms and development
 

@@ -79,3 +79,11 @@ func record_round(round_controller: RoundController) -> void:
 func persist() -> void:
 	profile.save_profile()
 	profile_changed.emit()
+
+
+func import_profile(source_path: String) -> String:
+	if not profile.import_profile(source_path):
+		return profile.error_message
+	settings.apply(profile.data["settings"])
+	profile_changed.emit()
+	return ""

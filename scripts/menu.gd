@@ -13,6 +13,8 @@ var _quit_dialog: ConfirmationDialog
 var _settings_panel: SettingsPanel
 var _title: Label
 var _background: ColorRect
+var _backup_dialog: FileDialog
+var _backup_open := false
 
 
 func _ready() -> void:
@@ -22,6 +24,17 @@ func _ready() -> void:
 	_quit_dialog.dialog_text = "Leave the game?"
 	_quit_dialog.confirmed.connect(func() -> void: get_tree().quit())
 	add_child(_quit_dialog)
+	_backup_dialog = FileDialog.new()
+	_backup_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	_backup_dialog.use_native_dialog = true
+	_backup_dialog.filters = PackedStringArray(["*.json ; Keep Clash JSON backup"])
+	_backup_dialog.file_selected.connect(_backup_selected)
+	_backup_dialog.canceled.connect(func() -> void:
+		_backup_open = false
+		_message = "Backup selection canceled; no files changed."
+		_render()
+	)
+	add_child(_backup_dialog)
 	GameSession.settings.changed.connect(_apply_theme)
 	_render()
 
@@ -37,13 +50,14 @@ func _apply_theme() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
-		_quit_dialog.popup_centered()
+		if not _backup_open:
+			_quit_dialog.popup_centered()
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_back()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if is_instance_valid(_settings_panel):
+	if _backup_open or is_instance_valid(_settings_panel):
 		return
 	if _pending_seat >= 0:
 		var device := SeatRouting.device_id_for_event(event)
@@ -59,6 +73,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _back() -> void:
+	if _backup_open:
+		return
 	if is_instance_valid(_settings_panel):
 		_settings_panel._close()
 	elif _mapping:
@@ -74,7 +90,7 @@ func _back() -> void:
 func _render() -> void:
 	_apply_theme()
 	for child in get_children():
-		if child != _quit_dialog:
+		if child != _quit_dialog and child != _backup_dialog:
 			remove_child(child)
 			child.queue_free()
 	var background := ColorRect.new()
@@ -161,11 +177,35 @@ func _render_home(column: VBoxContainer) -> void:
 		_settings_panel.closed.connect(_render)
 		add_child(_settings_panel)
 	)
+	_button(column, "EXPORT BACKUP", func() -> void: _show_backup(false))
+	_button(column, "IMPORT BACKUP (REPLACE PROFILE)", func() -> void: _show_backup(true))
 	_button(column, "QUIT", func() -> void: _quit_dialog.popup_centered())
 	var keys := PackedStringArray()
 	for code in GameSession.settings.values["bindings"]["shield_cw"]["keys"]:
 		keys.append(OS.get_keycode_string(int(code)))
 	_label(column, "Steer right: %s | Escape: pause | drag: touch" % ", ".join(keys))
+
+
+func _show_backup(importing: bool) -> void:
+	if not DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
+		_message = "Native file dialogs are unavailable on this platform; no files changed."
+		_render()
+		return
+	_backup_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE if importing else FileDialog.FILE_MODE_SAVE_FILE
+	_backup_dialog.title = "Import backup - replace all settings and progress" if importing else "Export Keep Clash backup"
+	_backup_dialog.current_file = "" if importing else "keep-clash-backup.json"
+	_backup_open = true
+	_backup_dialog.popup_centered_ratio(0.8)
+
+
+func _backup_selected(selected_path: String) -> void:
+	_backup_open = false
+	if _backup_dialog.file_mode == FileDialog.FILE_MODE_OPEN_FILE:
+		var failure: String = GameSession.import_profile(selected_path)
+		_message = "Backup imported; settings and progress restored." if failure == "" else failure
+	else:
+		_message = "Backup exported to %s" % selected_path if GameSession.profile.export_profile(selected_path) else GameSession.profile.error_message
+	_render()
 
 
 func _render_mapping(column: VBoxContainer) -> void:
