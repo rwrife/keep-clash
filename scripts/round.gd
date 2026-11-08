@@ -11,6 +11,7 @@ const TOUCH_SENSITIVITY := 0.012
 const IMPACT_POOL_SIZE := 8
 const SHAKE_SECONDS := 0.25
 const CAMERA_POSITION := Vector3(0, 25, 18)
+const CAMERA_BASE_FOV := 52.0
 const KEEP_SCENES: Array[PackedScene] = [
 	preload("res://assets/models/keep_lod0.glb"),
 	preload("res://assets/models/keep_lod1.glb"),
@@ -72,6 +73,7 @@ func _ready() -> void:
 	_build_hud()
 	GameSession.settings.changed.connect(_apply_settings)
 	get_viewport().size_changed.connect(_layout_hud)
+	get_viewport().size_changed.connect(_frame_arena)
 	_apply_settings()
 	_refresh_overlay()
 
@@ -313,9 +315,10 @@ func _build_world() -> void:
 	_camera = Camera3D.new()
 	add_child(_camera)
 	_camera.position = CAMERA_POSITION
-	_camera.fov = 52
+	_camera.fov = CAMERA_BASE_FOV
 	_camera.look_at(Vector3.ZERO, Vector3.UP)
 	_camera.current = true
+	_frame_arena()
 	_build_impact_juice()
 
 
@@ -622,6 +625,24 @@ func _apply_settings() -> void:
 		for wall in _wall_nodes[seat]:
 			wall.material_override.albedo_color = Color.WHITE if contrast else Color("91a5b8")
 	_layout_hud()
+
+
+func _frame_arena() -> void:
+	if not is_instance_valid(_camera):
+		return
+	var size := get_viewport().get_visible_rect().size
+	if size.x <= 0.0 or size.y <= 0.0:
+		return
+	# ponytail: keep fixed camera position; widen FOV on portrait until both
+	# side keeps fit. Replace with authored camera paths when arenas need them.
+	_camera.fov = CAMERA_BASE_FOV
+	var half_width := 13.2
+	var half_height := 13.2
+	var distance := _camera.global_position.distance_to(Vector3.ZERO)
+	var horizontal := atan(half_width / distance) * 2.0
+	var vertical := atan(half_height / distance) * 2.0
+	var required := maxf(vertical, 2.0 * atan(tan(horizontal * 0.5) * size.y / size.x))
+	_camera.fov = maxf(CAMERA_BASE_FOV, rad_to_deg(required) + 3.0)
 
 
 func _layout_hud() -> void:
