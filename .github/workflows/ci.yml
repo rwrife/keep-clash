@@ -44,6 +44,19 @@ jobs:
           out=$("$RUNNER_TEMP/godot" --headless -s tools/smoke_ten_rounds.gd)
           echo "$out"
           echo "$out" | grep -q '^SUCCESS: 10 consecutive rounds completed cleanly$'
+      - name: Render keep framing at phone, tablet and desktop sizes
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri
+          mkdir -p "$RUNNER_TEMP/keep-captures"
+          KEEP_CLASH_CAPTURE_DIR="$RUNNER_TEMP/keep-captures" xvfb-run -a -s '-screen 0 2000x1500x24' "$RUNNER_TEMP/godot" --rendering-driver opengl3 --path . -s res://tools/capture_keep_review.gd
+      - name: Upload keep render captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: keep-render-captures
+          path: ${{ runner.temp }}/keep-captures/*.png
+          if-no-files-found: ignore
 
   windows-load:
     name: Windows headless project load + tests
