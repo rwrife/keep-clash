@@ -284,7 +284,7 @@ func test_unrelated_events_do_not_trigger_feedback_and_round_resets_clear_it() -
 		assert_eq(arena._next_impact, 0)
 		assert_eq(arena._shake_remaining, 0.0)
 		var camera: Camera3D = arena._camera
-		assert_eq(camera.position, arena.CAMERA_POSITION)
+		assert_eq(camera.position, arena._camera_rest_position)
 		assert_false(arena._impact_audio.playing)
 		var pool: Array[GPUParticles3D] = arena._impact_pool
 		for burst in pool:

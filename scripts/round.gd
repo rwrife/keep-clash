@@ -57,6 +57,18 @@ var _top: VBoxContainer
 var _strip: GridContainer
 var _pause_button: Button
 var _interrupted := false
+var _camera_rest_position := CAMERA_POSITION
+var _ball_nodes: Array[MeshInstance3D] = []
+var _item_nodes: Array[Node3D] = []
+var _small_shield_meshes: Array[ArrayMesh] = []
+var _normal_shield_meshes: Array[Mesh] = []
+var _bump_buttons: Dictionary = {}
+var _footer: VBoxContainer
+var _effect_label: Label
+var _notice_remaining := 0.0
+var _notice := ""
+var _ball_emission := Color.WHITE
+var _bump_row: GridContainer
 
 
 func _ready() -> void:
@@ -71,6 +83,9 @@ func _ready() -> void:
 	controller.event_emitted.connect(_on_match_event)
 	_build_world()
 	_build_hud()
+	_top.resized.connect(_frame_arena)
+	_footer.resized.connect(_frame_arena)
+	_footer.minimum_size_changed.connect(_layout_hud)
 	GameSession.settings.changed.connect(_apply_settings)
 	get_viewport().size_changed.connect(_layout_hud)
 	get_viewport().size_changed.connect(_frame_arena)
@@ -81,13 +96,32 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not _reduced_motion():
 		# Keep the mouse aim ray independent of the previous frame's visual shake.
-		_camera.position = CAMERA_POSITION
+		_camera.position = _camera_rest_position
 	_read_human_input(delta)
 	controller.advance(delta)
 	_sync_visuals()
 	_update_hud()
+	if not controller.paused:
+		_notice_remaining = maxf(0.0, _notice_remaining - delta)
 	if not _reduced_motion():
 		_update_impact_juice(0.0 if controller.paused else delta)
+
+
+func _input(event: InputEvent) -> void:
+	if controller == null or _interrupted or is_instance_valid(_settings_panel) or controller.paused or controller.state != RoundController.State.PLAYING:
+		return
+	var device := ""
+	if event.is_action_pressed(InputSetup.ACTION_BUMP) and not event.is_echo():
+		if event is InputEventKey:
+			device = "keyboard"
+		elif event is InputEventJoypadButton:
+			device = "joy_%d" % event.device
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		device = "mouse"
+	if device != "":
+		for seat in _seats_for_device(device):
+			controller.bump(seat)
+		get_viewport().set_input_as_handled()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -160,6 +194,7 @@ func _restart() -> void:
 	_set_paused(false)
 	_apply_settings()
 	_refresh_overlay()
+	_notice_remaining = 0.0
 
 
 func _rematch() -> void:
@@ -167,6 +202,7 @@ func _rematch() -> void:
 	_reset_impact_juice()
 	_apply_settings()
 	_refresh_overlay()
+	_notice_remaining = 0.0
 
 
 func _read_human_input(delta: float) -> void:
@@ -291,6 +327,9 @@ func _build_world() -> void:
 			var shield := MeshInstance3D.new()
 			shield.name = "ShieldLOD%d" % lod
 			shield.mesh = source.mesh
+			if seat == 0:
+				_normal_shield_meshes.append(source.mesh)
+				_small_shield_meshes.append(_compressed_shield(source.mesh))
 			imported.free()
 			shield.set_surface_override_material(0, shield_mat)
 			shield.scale.y = 1.0 / 0.7 if aurora else 1.0
@@ -309,17 +348,79 @@ func _build_world() -> void:
 	imported_orb.free()
 	_ball.scale = Vector3.ONE * 0.35
 	_ball.material_override = ArenaLook.ball_material()
+	_ball_emission = _ball.material_override.emission
 	add_child(_ball)
+	_ball_nodes.append(_ball)
+	for index in range(1, MatchRules.MAX_BALLS):
+		var extra := MeshInstance3D.new()
+		extra.mesh = _ball.mesh
+		extra.scale = _ball.scale
+		extra.material_override = ArenaLook.ball_material()
+		extra.visible = false
+		add_child(extra)
+		_ball_nodes.append(extra)
+	_build_items()
 	_build_rails()
 
 	_camera = Camera3D.new()
 	add_child(_camera)
 	_camera.position = CAMERA_POSITION
 	_camera.fov = CAMERA_BASE_FOV
+	_camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	_camera.look_at(Vector3.ZERO, Vector3.UP)
 	_camera.current = true
 	_frame_arena()
 	_build_impact_juice()
+
+
+func _compressed_shield(mesh: Mesh) -> ArrayMesh:
+	var compressed := ArrayMesh.new()
+	for surface in range(mesh.get_surface_count()):
+		var arrays := mesh.surface_get_arrays(surface)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX].duplicate()
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL].duplicate()
+		for index in range(vertices.size()):
+			var angle := atan2(vertices[index].z, vertices[index].x)
+			var turn := angle * (MatchRules.SHRINK_SCALE - 1.0)
+			vertices[index] = vertices[index].rotated(Vector3.UP, -turn)
+			normals[index] = normals[index].rotated(Vector3.UP, -turn)
+		arrays[Mesh.ARRAY_VERTEX] = vertices
+		arrays[Mesh.ARRAY_NORMAL] = normals
+		compressed.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		compressed.surface_set_material(surface, mesh.surface_get_material(surface))
+	return compressed
+
+
+func _build_items() -> void:
+	var colors := [Color("c49bff"), Color("ffcb52"), Color("ff729d")]
+	var labels := ["SPLIT", "SPEED", "SHRINK"]
+	for index in range(controller.rules.items.size()):
+		var item: Dictionary = controller.rules.items[index]
+		var pivot := Node3D.new()
+		var point: Vector2 = item["position"]
+		pivot.position = Vector3(point.x, 0.6, point.y)
+		var body := MeshInstance3D.new()
+		var mesh := SphereMesh.new()
+		mesh.radius = MatchRules.ITEM_RADIUS
+		mesh.height = MatchRules.ITEM_RADIUS * 2.0
+		body.mesh = mesh
+		var material := StandardMaterial3D.new()
+		material.albedo_color = colors[index]
+		material.emission_enabled = true
+		material.emission = colors[index]
+		material.emission_energy_multiplier = 1.8
+		body.material_override = material
+		pivot.add_child(body)
+		var label := Label3D.new()
+		label.text = labels[index]
+		label.position.y = 1.6
+		label.font_size = 48
+		label.pixel_size = 0.018
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.no_depth_test = true
+		pivot.add_child(label)
+		add_child(pivot)
+		_item_nodes.append(pivot)
 
 
 func _build_rails() -> void:
@@ -384,21 +485,21 @@ func _play_impact(event: Dictionary) -> void:
 func _update_impact_juice(delta: float) -> void:
 	_shake_remaining = maxf(0.0, _shake_remaining - delta)
 	if _shake_remaining <= 0.0:
-		_camera.position = CAMERA_POSITION
+		_camera.position = _camera_rest_position
 		_shake_strength = 0.0
 		_shake_phase = 0.0
 		return
 	_shake_phase += delta
 	var envelope := _shake_strength * pow(_shake_remaining / SHAKE_SECONDS, 2.0)
 	var offset := _camera.basis.x * sin(_shake_phase * 83.0) + _camera.basis.y * cos(_shake_phase * 107.0) * 0.6
-	_camera.position = CAMERA_POSITION + offset * envelope
+	_camera.position = _camera_rest_position + offset * envelope
 
 
 func _reset_impact_juice() -> void:
 	_shake_remaining = 0.0
 	_shake_strength = 0.0
 	_shake_phase = 0.0
-	_camera.position = CAMERA_POSITION
+	_camera.position = _camera_rest_position
 	_impact_audio.stop()
 	for burst in _impact_pool:
 		burst.restart()
@@ -439,6 +540,8 @@ func _build_hud() -> void:
 
 	_center_label = Label.new()
 	_center_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_center_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_center_label.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_center_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_center_label.add_theme_font_size_override("font_size", 46)
 	_center_label.add_theme_color_override("font_color", Color("f2e6c8"))
@@ -455,6 +558,30 @@ func _build_hud() -> void:
 	pause_button.offset_bottom = 64 + safe.y
 	pause_button.pressed.connect(func() -> void: _set_paused(not controller.paused))
 	_hud.add_child(pause_button)
+	_footer = VBoxContainer.new()
+	_footer.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_footer.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_footer.alignment = BoxContainer.ALIGNMENT_END
+	_hud.add_child(_footer)
+	_effect_label = Label.new()
+	_effect_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_effect_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_footer.add_child(_effect_label)
+	var bump_center := CenterContainer.new()
+	_footer.add_child(bump_center)
+	_bump_row = GridContainer.new()
+	_bump_row.columns = 4
+	bump_center.add_child(_bump_row)
+	for seat in range(4):
+		if controller.seats[seat]["kind"] != "human":
+			continue
+		var button := Button.new()
+		button.custom_minimum_size = Vector2(140, 48)
+		button.focus_mode = Control.FOCUS_NONE
+		button.pressed.connect(func() -> void: controller.bump(seat))
+		button.clip_text = true
+		_bump_row.add_child(button)
+		_bump_buttons[seat] = button
 
 	_overlay = _panel(Vector2(320, 300))
 	var overlay_box := VBoxContainer.new()
@@ -553,6 +680,20 @@ func _refresh_overlay() -> void:
 
 
 func _on_match_event(event: Dictionary) -> void:
+	if event["kind"] == "bump" or event["kind"] == "item":
+		_notice = "POWER BUMP!" if event["kind"] == "bump" else (
+			{"split": "MULTIBALL!", "speed": "SPEED BOOST!", "shrink": "SMALL SHIELDS!"}[event["item"]])
+		_notice_remaining = 1.5
+		var point: Vector2 = event["position"]
+		if not _reduced_motion():
+			var burst := _impact_pool[_next_impact]
+			_next_impact = (_next_impact + 1) % IMPACT_POOL_SIZE
+			burst.position = Vector3(point.x, 0.7, point.y)
+			burst.restart()
+			burst.emitting = true
+		_impact_audio.stream = _wall_tone
+		_impact_audio.pitch_scale = 1.4
+		_impact_audio.play()
 	if event["kind"] == "round_over" and controller.state == RoundController.State.ROUND_OVER:
 		GameSession.record_round(controller)
 		_refresh_overlay()
@@ -572,11 +713,25 @@ func _sync_visuals() -> void:
 		_shield_nodes[seat].visible = controller.rules.keeps[seat]["alive"]
 		var angle: float = controller.rules.keeps[seat]["shield_angle"]
 		_shield_nodes[seat].rotation.y = -angle
+		for lod in range(SHIELD_SCENES.size()):
+			var shield: MeshInstance3D = _shield_nodes[seat].get_child(lod)
+			shield.mesh = _small_shield_meshes[lod] if controller.rules.shrink_remaining > 0.0 else _normal_shield_meshes[lod]
+		_shield_mats[seat].emission_energy_multiplier = 4.0 if controller.rules.bump_windows[seat] > 0.0 else 1.6
 		var walls: Array = controller.rules.keeps[seat]["walls"]
 		for sector in range(3):
 			_wall_nodes[seat][sector].visible = walls[sector] and controller.rules.keeps[seat]["alive"]
-	var ball_pos: Vector2 = controller.rules.ball_position
-	_ball.position = Vector3(ball_pos.x, 0.55, ball_pos.y)
+	for index in range(_ball_nodes.size()):
+		var node := _ball_nodes[index]
+		node.visible = index < controller.rules.balls.size()
+		if not node.visible:
+			continue
+		var ball: Dictionary = controller.rules.balls[index]
+		var point: Vector2 = ball["position"]
+		node.position = Vector3(point.x, 0.55, point.y)
+		var material: StandardMaterial3D = node.material_override
+		material.emission = Color("ffb342") if ball["boost"] > 0.0 else _ball_emission
+	for index in range(_item_nodes.size()):
+		_item_nodes[index].visible = controller.rules.items[index]["cooldown"] <= 0.0
 
 
 func _update_hud() -> void:
@@ -591,6 +746,26 @@ func _update_hud() -> void:
 		var walls_left: int = controller.rules.keeps[seat]["walls"].count(true)
 		var status := "down" if not controller.rules.keeps[seat]["alive"] else "%d walls" % walls_left
 		_seat_labels[seat].text = "S%d %s · %s" % [seat + 1, SeatRouting.describe(controller.seats[seat]), status]
+	for seat in _bump_buttons:
+		var button: Button = _bump_buttons[seat]
+		var cooldown: float = controller.rules.bump_cooldowns[seat]
+		var device: String = controller.seats[seat]["device"]
+		var hint := "SPACE" if device == "keyboard" else ("RMB" if device == "mouse" else ("A" if device.begins_with("joy_") else "TAP"))
+		button.text = "S%d BUMP\n%s" % [seat + 1, hint] if cooldown <= 0.0 else "S%d BUMP\n%.1fs" % [seat + 1, cooldown]
+		button.disabled = cooldown > 0.0 or controller.paused or controller.state != RoundController.State.PLAYING or not controller.rules.keeps[seat]["alive"]
+	var boosted := 0.0
+	for ball in controller.rules.balls:
+		boosted = maxf(boosted, ball["boost"])
+	var effects := PackedStringArray()
+	if _notice_remaining > 0.0:
+		effects.append(_notice)
+	if controller.rules.balls.size() > 1:
+		effects.append("%d BALLS" % controller.rules.balls.size())
+	if boosted > 0.0:
+		effects.append("BOOST %.1fs" % boosted)
+	if controller.rules.shrink_remaining > 0.0:
+		effects.append("SMALL SHIELDS %.1fs" % controller.rules.shrink_remaining)
+	_effect_label.text = " | ".join(effects) if not effects.is_empty() else "Time your BUMP just before the ball hits your shield"
 
 
 func _reduced_motion() -> bool:
@@ -633,16 +808,33 @@ func _frame_arena() -> void:
 	var size := get_viewport().get_visible_rect().size
 	if size.x <= 0.0 or size.y <= 0.0:
 		return
-	# ponytail: keep fixed camera position; widen FOV on portrait until both
-	# side keeps fit. Replace with authored camera paths when arenas need them.
 	_camera.fov = CAMERA_BASE_FOV
-	var half_width := 13.2
-	var half_height := 13.2
-	var distance := _camera.global_position.distance_to(Vector3.ZERO)
-	var horizontal := atan(half_width / distance) * 2.0
-	var vertical := atan(half_height / distance) * 2.0
-	var required := maxf(vertical, 2.0 * atan(tan(horizontal * 0.5) * size.y / size.x))
-	_camera.fov = maxf(CAMERA_BASE_FOV, rad_to_deg(required) + 3.0)
+	var safe := _hud_safe_margins()
+	var top := safe.y + 100.0
+	var bottom := safe.w + 100.0
+	if is_instance_valid(_top):
+		top = _top.position.y + _top.size.y + 16.0
+	if is_instance_valid(_footer):
+		bottom = size.y - _footer.position.y + 16.0
+	var tangent := tan(deg_to_rad(CAMERA_BASE_FOV) * 0.5)
+	var vertical_room := maxf(0.1, 1.0 - (top + bottom) / size.y)
+	var center_offset := (bottom - top) / size.y
+	var horizontal_room := maxf(0.1, 1.0 - 2.0 * (maxf(safe.x, safe.z) + 16.0) / size.x)
+	var direction := CAMERA_POSITION.normalized()
+	var basis_inverse := _camera.global_basis.inverse()
+	var distance := 0.0
+	# Fit the actual rail envelope and keep heights, including perspective depth.
+	for x in [-controller.bounds.x - 0.7, controller.bounds.x + 0.7]:
+		for z in [-controller.bounds.y - 0.7, controller.bounds.y + 0.7]:
+			for y in [0.0, 3.0]:
+				var local: Vector3 = basis_inverse * Vector3(x, y, z)
+				var depth := Vector3(x, y, z).dot(direction)
+				distance = maxf(distance, depth + absf(local.x) / (tangent * size.x / size.y * horizontal_room))
+				distance = maxf(distance, (local.y / tangent + (1.0 - 2.0 * top / size.y) * depth) / vertical_room)
+				distance = maxf(distance, (-local.y / tangent + (1.0 - 2.0 * bottom / size.y) * depth) / vertical_room)
+	_camera_rest_position = direction * distance - _camera.global_basis.y * center_offset * distance * tangent
+	_camera.position = _camera_rest_position
+	_camera.far = maxf(100.0, distance + 60.0)
 
 
 func _layout_hud() -> void:
@@ -653,13 +845,18 @@ func _layout_hud() -> void:
 	var safe := _hud_safe_margins()
 	_strip.columns = 2 if narrow else 4
 	_top.offset_left = safe.x
-	_top.offset_top = safe.y + 64.0 * scale_value
-	_top.offset_right = -safe.z
+	_top.offset_top = safe.y
+	_top.offset_right = -safe.z - 64.0 * scale_value
 	_pause_button.offset_left = -safe.z - 56.0 * scale_value
 	_pause_button.offset_top = safe.y
 	_pause_button.offset_right = -safe.z
 	_pause_button.offset_bottom = safe.y + 56.0 * scale_value
 	_pause_button.custom_minimum_size = Vector2.ONE * 56.0 * scale_value
+	_footer.offset_left = safe.x
+	_footer.offset_right = -safe.z
+	_bump_row.columns = 2 if narrow else 4
+	_footer.offset_bottom = -safe.w
+	_footer.offset_top = -safe.w - _footer.get_combined_minimum_size().y
 	var contrast: bool = GameSession.settings.values["high_contrast"]
 	for seat in range(4):
 		_seat_labels[seat].add_theme_font_size_override("font_size", roundi((13.0 if narrow else 16.0) * scale_value))
@@ -674,6 +871,7 @@ func _layout_hud() -> void:
 		panel.offset_right = width / 2.0
 		panel.offset_top = -minimum.y / 2.0
 		panel.offset_bottom = minimum.y / 2.0
+	_frame_arena()
 
 
 func _hud_safe_margins() -> Vector4:

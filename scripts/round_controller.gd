@@ -21,7 +21,7 @@ const BOT_BIAS_REROLL: Array[float] = [0.9, 0.2, 0.03]
 const BOT_BIAS_RANGE := 1.0
 const BOT_DECISION_TICKS := 6
 const SPEED_GAIN := 1.05
-const MAX_BALL_SPEED := 26.0
+const MAX_BALL_SPEED := MatchRules.MAX_NORMAL_SPEED
 const ARENA_HALF := 16.0
 ## Tests may lower this to exercise the timeout path without simulating 90s.
 var time_limit := ROUND_TIME_LIMIT
@@ -66,6 +66,8 @@ func _init(seat_config: Array[Dictionary], seed_in: int = 1, arena: String = "co
 
 func _start_round() -> void:
 	rules = MatchRules.new(seed_value + round_index, arena_id)
+	rules.speed_gain = speed_gain
+	rules.enable_items()
 	_serve_rng.seed = seed_value + round_index * 7919
 	_aim_rng.seed = seed_value + round_index * 104729
 	for i in range(4):
@@ -133,6 +135,12 @@ func rotate_target(seat: int, direction: float, dt: float) -> void:
 		targets[seat] = wrapf(targets[seat] + clampf(direction, -1.0, 1.0) * SHIELD_MAX_SPEED * dt, -PI, PI)
 
 
+func bump(seat: int) -> bool:
+	if paused or state != State.PLAYING or not _human_alive(seat) or not rules.has_moving_ball():
+		return false
+	return rules.arm_bump(seat)
+
+
 func tick() -> void:
 	if state == State.ROUND_OVER or paused:
 		return
@@ -145,17 +153,15 @@ func tick() -> void:
 			_serve()
 			_set_state(State.PLAYING)
 		return
-	if rules.ball_velocity.is_zero_approx():
+	if not rules.has_moving_ball():
+		rules.step(TICK)
 		timer -= TICK
 		if timer <= 0.0 and not rules.over:
 			_serve()
 	else:
 		var events: Array[Dictionary] = rules.step(TICK)
 		for event in events:
-			if event["kind"] == "shield":
-				var speed := minf(rules.ball_velocity.length() * speed_gain, MAX_BALL_SPEED)
-				rules.ball_velocity = rules.ball_velocity.normalized() * speed
-			elif event["kind"] == "core" and not rules.over:
+			if event["kind"] == "core" and not rules.over and not rules.has_moving_ball():
 				timer = RESERVE_DELAY
 			event_emitted.emit(event)
 		_apply_rails()
@@ -215,8 +221,13 @@ func _serve() -> void:
 
 
 func _apply_rails() -> void:
-	var pos := rules.ball_position
-	var vel := rules.ball_velocity
+	for ball in rules.balls:
+		_apply_ball_rails(ball)
+
+
+func _apply_ball_rails(ball: Dictionary) -> void:
+	var pos: Vector2 = ball["position"]
+	var vel: Vector2 = ball["velocity"]
 	var bounced := false
 	if absf(pos.x) > bounds.x:
 		pos.x = signf(pos.x) * bounds.x
@@ -227,8 +238,8 @@ func _apply_rails() -> void:
 		vel.y = -signf(pos.y) * absf(vel.y)
 		bounced = true
 	if bounced:
-		rules.ball_position = pos
-		rules.ball_velocity = vel
+		ball["position"] = pos
+		ball["velocity"] = vel
 		event_emitted.emit({"kind": "rail", "seat": -1})
 
 
@@ -251,7 +262,7 @@ func _time_out() -> void:
 			tie = true
 	rules.over = true
 	rules.winner = -1 if tie else best
-	rules.ball_velocity = Vector2.ZERO
+	rules.stop_balls()
 	_finish()
 
 

@@ -390,7 +390,7 @@ func test_accessibility_applies_live_and_survives_reload() -> void:
 	settings["hud_scale"] = 1.5
 	assert_eq(GameSession.update_settings(settings), "")
 	assert_eq(arena._shake_remaining, 0.0)
-	assert_eq(arena._camera.position, arena.CAMERA_POSITION)
+	assert_eq(arena._camera.position, arena._camera_rest_position)
 	for burst in arena._impact_pool:
 		assert_false(burst.emitting)
 	arena._on_match_event({"kind": "wall", "seat": 0, "wall": 0})
