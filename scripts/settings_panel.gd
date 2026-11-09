@@ -67,6 +67,7 @@ func _render() -> void:
 		toggle.toggled.connect(func(value: bool) -> void: _change(key, value))
 		_column.add_child(toggle)
 	_label("CONTROLS (keyboard and per-device gamepad; stick X and touch drag remain available)")
+	_label("Bump: Space / right mouse / gamepad A / on-screen BUMP. Tap just before impact.")
 	for action in ["shield_ccw", "shield_cw", "pause"]:
 		for kind in ["keys", "buttons"]:
 			var binding: Array = GameSession.settings.values["bindings"][action][kind]

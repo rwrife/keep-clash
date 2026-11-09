@@ -8,12 +8,14 @@ extends RefCounted
 const ACTION_CW := &"shield_cw"
 const ACTION_CCW := &"shield_ccw"
 const ACTION_PAUSE := &"pause"
+const ACTION_BUMP := &"bump"
 
 
 static func ensure() -> void:
 	_ensure_action(ACTION_CCW, [KEY_A, KEY_LEFT], [])
 	_ensure_action(ACTION_CW, [KEY_D, KEY_RIGHT], [])
 	_ensure_action(ACTION_PAUSE, [KEY_ESCAPE, KEY_P], [JOY_BUTTON_START])
+	_ensure_action(ACTION_BUMP, [KEY_SPACE], [JOY_BUTTON_A])
 
 
 static func default_bindings() -> Dictionary:
@@ -85,5 +87,6 @@ static func _ensure_action(action: StringName, keys: Array, pad_buttons: Array) 
 		InputMap.action_add_event(action, key)
 	for button in pad_buttons:
 		var pad := InputEventJoypadButton.new()
+		pad.device = -1
 		pad.button_index = button
 		InputMap.action_add_event(action, pad)

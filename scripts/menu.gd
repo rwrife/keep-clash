@@ -119,7 +119,7 @@ func _render() -> void:
 	title.add_theme_color_override("font_color", TEAL)
 	title.add_theme_font_size_override("font_size", 42)
 	column.add_child(title)
-	_label(column, "Offline • four keeps • one orb")
+	_label(column, "Offline • four keeps • power bumps and multiball")
 	if _mapping:
 		_render_mapping(column)
 	else:
@@ -184,6 +184,8 @@ func _render_home(column: VBoxContainer) -> void:
 	for code in GameSession.settings.values["bindings"]["shield_cw"]["keys"]:
 		keys.append(OS.get_keycode_string(int(code)))
 	_label(column, "Steer right: %s | Escape: pause | drag: touch" % ", ".join(keys))
+	_label(column, "Bump: Space / right mouse / pad A / on-screen button. Tap just before impact.")
+	_label(column, "Hit SPLIT, SPEED or SHRINK targets for temporary arena effects.")
 
 
 func _show_backup(importing: bool) -> void:
