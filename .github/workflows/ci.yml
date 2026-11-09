@@ -50,6 +50,9 @@ jobs:
           sudo apt-get install -y xvfb libgl1-mesa-dri
           mkdir -p "$RUNNER_TEMP/keep-captures"
           KEEP_CLASH_CAPTURE_DIR="$RUNNER_TEMP/keep-captures" xvfb-run -a -s '-screen 0 2000x1500x24' "$RUNNER_TEMP/godot" --rendering-driver opengl3 --path . -s res://tools/capture_keep_review.gd
+      - name: Measure keep LOD switching in rendered frames
+        run: |
+          KEEP_CLASH_CAPTURE_DIR="$RUNNER_TEMP/keep-captures" xvfb-run -a -s '-screen 0 1280x960x24' "$RUNNER_TEMP/godot" --rendering-driver opengl3 --path . -s res://tools/capture_keep_lod.gd
       - name: Upload keep render captures
         if: always()
         uses: actions/upload-artifact@v4
