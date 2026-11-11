@@ -11,24 +11,27 @@ const IMPACT_PARTICLE_AMOUNT := 28
 const IMPACT_PARTICLE_LIFETIME := 0.4
 
 
-static func build_environment() -> Environment:
+static func build_environment(mobile: bool = OS.has_feature("mobile")) -> Environment:
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = Color("08131d")
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color("536b86")
 	environment.ambient_light_energy = 0.55
-	environment.glow_enabled = true
-	environment.glow_intensity = 0.85
-	environment.glow_bloom = 0.12
-	environment.glow_hdr_threshold = 1.1
-	for level in range(GLOW_LEVELS.size()):
-		var weight: float = GLOW_LEVELS[level]
-		environment.set_glow_level(level, weight)
-	environment.sdfgi_enabled = true
-	environment.sdfgi_read_sky_light = false
-	environment.sdfgi_energy = 1.15
-	environment.sdfgi_bounce_feedback = 0.35
+	# ponytail: mobile scales down by disabling Forward+-only glow and SDFGI.
+	environment.glow_enabled = not mobile
+	if not mobile:
+		environment.glow_intensity = 0.85
+		environment.glow_bloom = 0.12
+		environment.glow_hdr_threshold = 1.1
+		for level in range(GLOW_LEVELS.size()):
+			var weight: float = GLOW_LEVELS[level]
+			environment.set_glow_level(level, weight)
+	environment.sdfgi_enabled = not mobile
+	if not mobile:
+		environment.sdfgi_read_sky_light = false
+		environment.sdfgi_energy = 1.15
+		environment.sdfgi_bounce_feedback = 0.35
 	environment.tonemap_mode = Environment.TONE_MAPPER_ACES
 	environment.tonemap_exposure = 1.0
 	environment.adjustment_enabled = true
@@ -71,10 +74,10 @@ static func ball_material() -> StandardMaterial3D:
 	return material
 
 
-static func impact_particles() -> GPUParticles3D:
+static func impact_particles(mobile: bool = OS.has_feature("mobile")) -> GPUParticles3D:
 	var particles := GPUParticles3D.new()
 	particles.emitting = false
-	particles.amount = IMPACT_PARTICLE_AMOUNT
+	particles.amount = IMPACT_PARTICLE_AMOUNT / 2 if mobile else IMPACT_PARTICLE_AMOUNT
 	particles.lifetime = IMPACT_PARTICLE_LIFETIME
 	particles.one_shot = true
 	particles.explosiveness = 1.0
