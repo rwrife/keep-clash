@@ -44,6 +44,38 @@ func test_environment_is_configured_for_forward_plus() -> void:
 	assert_gt(environment.adjustment_contrast, 1.0)
 
 
+func test_mobile_environment_disables_forward_plus_only_effects() -> void:
+	var desktop := ArenaLook.build_environment(false)
+	var mobile := ArenaLook.build_environment(true)
+	assert_true(desktop.glow_enabled)
+	assert_true(desktop.sdfgi_enabled)
+	assert_false(mobile.glow_enabled, "mobile must not request unsupported glow")
+	assert_false(mobile.sdfgi_enabled, "mobile must not request Forward+ SDFGI")
+	assert_eq(mobile.background_color, desktop.background_color)
+	assert_eq(mobile.tonemap_mode, desktop.tonemap_mode)
+
+
+func test_mobile_impact_pool_has_lower_particle_budget() -> void:
+	var desktop: GPUParticles3D = autofree(ArenaLook.impact_particles(false))
+	var mobile: GPUParticles3D = autofree(ArenaLook.impact_particles(true))
+	assert_eq(desktop.amount, ArenaLook.IMPACT_PARTICLE_AMOUNT)
+	assert_gt(mobile.amount, 0)
+	assert_lt(mobile.amount, desktop.amount)
+	assert_true(mobile.one_shot)
+
+
+func test_round_mobile_budget_applies_to_runtime_world() -> void:
+	var arena := _arena()
+	arena._apply_render_budget(true)
+	var environment: WorldEnvironment = arena.get_child(0)
+	assert_false(environment.environment.glow_enabled)
+	assert_false(environment.environment.sdfgi_enabled)
+	assert_false(arena.get_child(1).shadow_enabled)
+	assert_eq(arena._impact_pool.size(), arena.IMPACT_POOL_SIZE)
+	for burst in arena._impact_pool:
+		assert_eq(burst.amount, ArenaLook.IMPACT_PARTICLE_AMOUNT)
+
+
 func test_floor_is_matte_and_walls_are_brushed_metal() -> void:
 	var floor_material := ArenaLook.floor_material()
 	_assert_pbr(floor_material, 0.1, 0.25, 0.75, 0.9)

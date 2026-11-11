@@ -371,6 +371,16 @@ func _build_world() -> void:
 	_camera.current = true
 	_frame_arena()
 	_build_impact_juice()
+	_apply_render_budget(OS.has_feature("mobile"))
+
+
+func _apply_render_budget(mobile: bool) -> void:
+	var environment := get_child(0) as WorldEnvironment
+	environment.environment = ArenaLook.build_environment(mobile)
+	var sun := get_child(1) as DirectionalLight3D
+	sun.shadow_enabled = not mobile
+	for burst in _impact_pool:
+		burst.amount = ArenaLook.IMPACT_PARTICLE_AMOUNT * (1 if mobile else 2)
 
 
 func _compressed_shield(mesh: Mesh) -> ArrayMesh:
