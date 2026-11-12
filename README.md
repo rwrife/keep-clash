@@ -30,7 +30,7 @@ Install pinned Godot 4.7.2-stable editor and matching export templates, then run
 
 ## Play this build
 
-The round camera fits the entire rail-bounded arena and keep heights into the space between the HUD and bottom controls, including when resizing or using portrait displays.
+The round camera fits the entire rail-bounded arena and keep heights into the space between the HUD and bottom controls, including when resizing or using portrait displays. Inspection camera probes verify all four keep visuals switch LODs in the real round scene under Linux Compatibility, capturing 12 PNGs.
 
 **Power bump:** tap **Space** (keyboard), **right mouse** (mouse seat), **A / bottom face button** (gamepad seat), or that seat's on-screen **BUMP** button just before the orb contacts your shield. The timing window is 0.18 seconds, with a 1.2-second cooldown even on a miss. A successful bump more than doubles the orb's normal speed for 3 seconds (capped at 52 m/s); subsequent boosts refresh rather than stack. Normal acceleration resumes after the boost expires. Bump controls are fixed; steering and pause remain remappable.
 
