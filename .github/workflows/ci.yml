@@ -53,6 +53,9 @@ jobs:
       - name: Measure keep LOD switching in rendered frames
         run: |
           KEEP_CLASH_CAPTURE_DIR="$RUNNER_TEMP/keep-captures" xvfb-run -a -s '-screen 0 1280x960x24' "$RUNNER_TEMP/godot" --rendering-driver opengl3 --path . -s res://tools/capture_keep_lod.gd
+      - name: Measure round-scene keep LODs for all seats
+        run: |
+          KEEP_CLASH_CAPTURE_DIR="$RUNNER_TEMP/keep-captures" xvfb-run -a -s '-screen 0 1280x960x24' "$RUNNER_TEMP/godot" --rendering-driver opengl3 --path . -s res://tools/capture_round_keep_lod.gd
       - name: Measure shield LOD switching in rendered frames
         run: |
           KEEP_CLASH_CAPTURE_DIR="$RUNNER_TEMP/keep-captures" xvfb-run -a -s '-screen 0 1280x960x24' "$RUNNER_TEMP/godot" --rendering-driver opengl3 --path . -s res://tools/capture_shield_lod.gd
